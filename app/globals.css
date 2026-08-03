@@ -1,0 +1,113 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-midnight-canvas dark:text-gray-100 transition-colors duration-200;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full dark:bg-white/15;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-white/25;
+  }
+}
+
+@layer utilities {
+  .animate-stagger-1 { animation-delay: 0ms; }
+  .animate-stagger-2 { animation-delay: 50ms; }
+  .animate-stagger-3 { animation-delay: 100ms; }
+  .animate-stagger-4 { animation-delay: 150ms; }
+  .animate-stagger-5 { animation-delay: 200ms; }
+
+  /* Texto "vacío"/placeholder (empty states, "Sin asignar", separadores, iconos
+     deshabilitados). El patrón anterior (text-gray-300 dark:text-gray-600) daba
+     ~1.5:1 en claro y ~2.3:1 en oscuro — muy por debajo de WCAG AA (4.5:1).
+     text-gray-500/dark:text-gray-400 es el mismo par ya usado como texto
+     secundario en el resto de la app y sí cumple AA en ambos modos. */
+  .text-empty {
+    @apply text-gray-500 dark:text-gray-400;
+  }
+}
+
+/* Paleta de gráficos (Recharts) — variables CSS consumidas directamente en
+   atributos SVG (fill="var(--chart-1)") porque las clases dark: de Tailwind
+   no aplican a props de presentación SVG. Un solo ramp tonal de la marca
+   (navy → azul claro); en modo oscuro se aclara completo para mantenerse
+   visible sobre el fondo casi negro de las tarjetas (dark:bg-midnight-surface). */
+:root {
+  --chart-1: #1B2B8C;
+  --chart-2: #2E4DB8;
+  --chart-3: #4A9FD8;
+  --chart-4: #7FC1E8;
+  --chart-5: #B8DDF2;
+}
+html.dark {
+  --chart-1: #5B7FE0;
+  --chart-2: #6F93E8;
+  --chart-3: #6FB8EF;
+  --chart-4: #93D0F5;
+  --chart-5: #C7E8FB;
+}
+
+/* transitions.dev — shared motion tokens (durations/easings used across the app) */
+:root {
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: ease-in-out;
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+}
+
+/* transitions.dev — icon swap (used by the Sun/Moon theme toggle) */
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--icon-swap-dur) var(--icon-swap-ease),
+    filter var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state='a'] .t-icon[data-icon='a'],
+.t-icon-swap[data-state='b'] .t-icon[data-icon='b'] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state='a'] .t-icon[data-icon='b'],
+.t-icon-swap[data-state='b'] .t-icon[data-icon='a'] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon { transition: none !important; }
+}
