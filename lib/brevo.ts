@@ -47,7 +47,7 @@ export async function sendCampaignEmails(
     try {
       await client.transactionalEmails.sendTransacEmail({
         sender: { email: config.senderEmail, name: config.senderName },
-        to: [{ email: r.email, name: [r.nombre, r.apellido].filter(Boolean).join(' ') || r.email }],
+        to: [{ email: r.email, name: r.nombre || r.email }],
         subject,
         htmlContent,
       })

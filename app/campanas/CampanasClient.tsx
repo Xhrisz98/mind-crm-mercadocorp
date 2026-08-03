@@ -1,23 +1,21 @@
 'use client'
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Users, Mail, MessageCircle } from 'lucide-react'
+import { Mail, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Rol } from '@/lib/types'
-import BaseClientesTab from './BaseClientesTab'
 import EmailMarketingTab from './EmailMarketingTab'
 
-type Tab = 'clientes' | 'email' | 'whatsapp'
+type Tab = 'email' | 'whatsapp'
 
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
-  { key: 'clientes', label: 'Base de Clientes', Icon: Users },
   { key: 'email', label: 'Email Marketing', Icon: Mail },
   { key: 'whatsapp', label: 'WhatsApp Masivo', Icon: MessageCircle },
 ]
 
 function readTab(searchParams: URLSearchParams): Tab {
   const t = searchParams.get('tab')
-  return t === 'email' || t === 'whatsapp' ? t : 'clientes'
+  return t === 'whatsapp' ? t : 'email'
 }
 
 interface Props {
@@ -29,13 +27,9 @@ export default function CampanasClient({ userRol }: Props) {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>(() => readTab(searchParams))
 
-  // Selección de clientes en la tabla de "Base de Clientes" — se reutiliza en el
-  // composer de Email Marketing para armar listas de destinatarios manuales.
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-
   function switchTab(t: Tab) {
     setTab(t)
-    const qs = t === 'clientes' ? '' : `?tab=${t}`
+    const qs = t === 'email' ? '' : `?tab=${t}`
     router.replace(`/campanas${qs}`, { scroll: false })
   }
 
@@ -43,7 +37,7 @@ export default function CampanasClient({ userRol }: Props) {
     <div className="p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Campañas</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Base de clientes, email marketing y mensajería masiva</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Email marketing y mensajería masiva</p>
       </div>
 
       <div className="flex items-center bg-gray-100 dark:bg-white/5 rounded-xl p-1 gap-0.5 mb-6 w-full sm:w-fit overflow-x-auto">
@@ -62,19 +56,7 @@ export default function CampanasClient({ userRol }: Props) {
         ))}
       </div>
 
-      {tab === 'clientes' && (
-        <BaseClientesTab
-          userRol={userRol}
-          selectedIds={selectedIds}
-          setSelectedIds={setSelectedIds}
-        />
-      )}
-      {tab === 'email' && (
-        <EmailMarketingTab
-          userRol={userRol}
-          selectedIds={selectedIds}
-        />
-      )}
+      {tab === 'email' && <EmailMarketingTab userRol={userRol} />}
       {tab === 'whatsapp' && (
         <div className="bg-white dark:bg-midnight-surface rounded-xl border border-gray-100 dark:border-midnight-border shadow-sm p-10 text-center">
           <MessageCircle size={32} className="mx-auto text-empty mb-3" />

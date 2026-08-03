@@ -7,16 +7,22 @@ import {
   Layers, FileText, Send, History, Plus, Pencil, Trash2, Users, ShieldCheck,
   Eye, X, Mail,
 } from 'lucide-react'
-import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { cn, formatDate, formatDateTime, ESTADO_LABELS, LEAD_SCORE_LABELS, LEAD_SCORE_OPTIONS } from '@/lib/utils'
 import { fetcher } from '@/lib/fetcher'
 import type {
-  Rol, SegmentoEmail, SegmentoFiltros, PlantillaEmail, CampanaEmail, TipoCliente, EstadoCampanaEmail,
+  Rol, SegmentoEmail, SegmentoFiltros, PlantillaEmail, CampanaEmail, EstadoCampanaEmail,
+  EstadoLead, Canal, UsuarioCRM,
 } from '@/lib/types'
 import { TableSkeleton } from '@/components/ui/SkeletonLoader'
 import Spinner from '@/components/ui/Spinner'
 import ErrorState from '@/components/ui/ErrorState'
 
-const TIPO_LABELS: Record<TipoCliente, string> = { blackbull: 'BlackBull', gift_card: 'Gift Card' }
+const CANAL_OPTIONS: Canal[] = ['whatsapp', 'telegram', 'messenger', 'instagram', 'web', 'presencial']
+const CANAL_LABELS: Record<Canal, string> = {
+  whatsapp: 'WhatsApp', telegram: 'Telegram', messenger: 'Messenger',
+  instagram: 'Instagram', web: 'Web', presencial: 'Presencial',
+}
+const ESTADO_LEAD_OPTIONS = Object.keys(ESTADO_LABELS) as EstadoLead[]
 
 const ESTADO_CAMPANA_LABELS: Record<EstadoCampanaEmail, string> = {
   borrador: 'Borrador',
@@ -53,60 +59,62 @@ function useDebounced<T>(value: T, delay = 400): T {
 
 // ── Filtros de segmento (compartido crear/editar) ─────────────────────────
 function FiltrosForm({ filtros, onChange }: { filtros: SegmentoFiltros; onChange: (f: SegmentoFiltros) => void }) {
+  const { data: usuariosData } = useSWR<{ usuarios: UsuarioCRM[] }>('/api/usuarios', fetcher)
+  const vendedores = usuariosData?.usuarios ?? []
+
   return (
     <div className="grid sm:grid-cols-2 gap-3">
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Tipo de cliente</label>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Estado del lead</label>
         <select
-          value={filtros.tipo_cliente ?? ''}
-          onChange={(e) => onChange({ ...filtros, tipo_cliente: (e.target.value || undefined) as TipoCliente | undefined })}
+          value={filtros.estado_lead ?? ''}
+          onChange={(e) => onChange({ ...filtros, estado_lead: (e.target.value || undefined) as EstadoLead | undefined })}
           className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
         >
           <option value="">Todos</option>
-          <option value="blackbull">BlackBull</option>
-          <option value="gift_card">Gift Card</option>
+          {ESTADO_LEAD_OPTIONS.map((e) => <option key={e} value={e}>{ESTADO_LABELS[e]}</option>)}
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Activo</label>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Canal</label>
         <select
-          value={filtros.activo === undefined ? '' : filtros.activo ? '1' : '0'}
-          onChange={(e) => onChange({ ...filtros, activo: e.target.value === '' ? undefined : e.target.value === '1' })}
+          value={filtros.canal ?? ''}
+          onChange={(e) => onChange({ ...filtros, canal: (e.target.value || undefined) as Canal | undefined })}
           className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
         >
           <option value="">Todos</option>
-          <option value="1">Activos</option>
-          <option value="0">Inactivos</option>
+          {CANAL_OPTIONS.map((c) => <option key={c} value={c}>{CANAL_LABELS[c]}</option>)}
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Wallet</label>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Lead score</label>
         <select
-          value={filtros.tiene_wallet === undefined ? '' : filtros.tiene_wallet ? '1' : '0'}
-          onChange={(e) => onChange({ ...filtros, tiene_wallet: e.target.value === '' ? undefined : e.target.value === '1' })}
+          value={filtros.lead_score ?? ''}
+          onChange={(e) => onChange({ ...filtros, lead_score: (e.target.value || undefined) as SegmentoFiltros['lead_score'] })}
           className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
         >
           <option value="">Todos</option>
-          <option value="1">Con wallet</option>
-          <option value="0">Sin wallet</option>
+          {LEAD_SCORE_OPTIONS.map((s) => <option key={s} value={s}>{LEAD_SCORE_LABELS[s]}</option>)}
         </select>
       </div>
-      <div />
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Registro desde</label>
-        <input type="date" value={filtros.signup_desde ?? ''} onChange={(e) => onChange({ ...filtros, signup_desde: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Vendedor asignado</label>
+        <select
+          value={filtros.vendedor_asignado_id ?? ''}
+          onChange={(e) => onChange({ ...filtros, vendedor_asignado_id: e.target.value ? Number(e.target.value) : undefined })}
+          className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
+        >
+          <option value="">Todos</option>
+          {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+        </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Registro hasta</label>
-        <input type="date" value={filtros.signup_hasta ?? ''} onChange={(e) => onChange({ ...filtros, signup_hasta: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Primer contacto desde</label>
+        <input type="date" value={filtros.contacto_desde ?? ''} onChange={(e) => onChange({ ...filtros, contacto_desde: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Última actividad desde</label>
-        <input type="date" value={filtros.accion_desde ?? ''} onChange={(e) => onChange({ ...filtros, accion_desde: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Última actividad hasta</label>
-        <input type="date" value={filtros.accion_hasta ?? ''} onChange={(e) => onChange({ ...filtros, accion_hasta: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Primer contacto hasta</label>
+        <input type="date" value={filtros.contacto_hasta ?? ''} onChange={(e) => onChange({ ...filtros, contacto_hasta: e.target.value || undefined })} className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
       </div>
     </div>
   )
@@ -191,7 +199,7 @@ function SegmentosSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Listas guardadas de clientes con opt-in de email, reutilizables en campañas.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Listas guardadas de contactos con email, reutilizables en campañas.</p>
         <button onClick={openCreate} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-[#1B2B8C] text-white hover:bg-[#1B2B8C]/90 active:scale-[0.98] transition-all duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] shrink-0">
           <Plus size={15} /> Crear segmento
         </button>
@@ -217,12 +225,12 @@ function SegmentosSection() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {s.filtros.tipo_cliente && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{TIPO_LABELS[s.filtros.tipo_cliente]}</span>}
-                {s.filtros.activo !== undefined && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{s.filtros.activo ? 'Activos' : 'Inactivos'}</span>}
-                {s.filtros.tiene_wallet !== undefined && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{s.filtros.tiene_wallet ? 'Con wallet' : 'Sin wallet'}</span>}
+                {s.filtros.estado_lead && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{ESTADO_LABELS[s.filtros.estado_lead]}</span>}
+                {s.filtros.canal && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{CANAL_LABELS[s.filtros.canal]}</span>}
+                {s.filtros.lead_score && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300">{LEAD_SCORE_LABELS[s.filtros.lead_score]}</span>}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                <ShieldCheck size={11} /> Solo opt-in email · creado {formatDate(s.fecha_creacion)}
+                <ShieldCheck size={11} /> Con email registrado · creado {formatDate(s.fecha_creacion)}
               </p>
             </div>
           ))}
@@ -239,7 +247,7 @@ function SegmentosSection() {
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Nombre del segmento *</label>
                 <input type="text" autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. BlackBull activos con wallet" className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
               </div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Filtros (opt-in email siempre requerido)</p>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Filtros (solo contactos con email registrado)</p>
               <FiltrosForm filtros={filtros} onChange={setFiltros} />
 
               <div className="flex items-center gap-2 mt-4 mb-5 px-3 py-2 bg-[#1B2B8C]/5 dark:bg-[#4A9FD8]/10 rounded-lg">
@@ -492,7 +500,7 @@ function HistorialSection({ brevoConfigurado, onEnviar }: { brevoConfigurado: bo
 }
 
 // ── Sección: Componer ────────────────────────────────────────────────────────
-function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedIds: Set<number>; brevoConfigurado: boolean; onSent: () => void }) {
+function ComponerSection({ brevoConfigurado, onSent }: { brevoConfigurado: boolean; onSent: () => void }) {
   const { data: segmentosData } = useSWR<{ segmentos: SegmentoEmail[] }>('/api/segmentos-email', fetcher)
   const segmentos = segmentosData?.segmentos ?? []
   const { data: plantillasData } = useSWR<{ plantillas: PlantillaEmail[] }>('/api/plantillas-email', fetcher)
@@ -501,7 +509,6 @@ function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedId
   const [nombre, setNombre] = useState('')
   const [asunto, setAsunto] = useState('')
   const [contenido, setContenido] = useState('')
-  const [modoDestinatarios, setModoDestinatarios] = useState<'segmento' | 'manual'>('segmento')
   const [segmentoId, setSegmentoId] = useState<string>('')
 
   const [showConfirm, setShowConfirm] = useState(false)
@@ -519,25 +526,21 @@ function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedId
   }
 
   function resetForm() {
-    setNombre(''); setAsunto(''); setContenido(''); setSegmentoId(''); setModoDestinatarios('segmento')
+    setNombre(''); setAsunto(''); setContenido(''); setSegmentoId('')
   }
 
   async function handleRevisar() {
     if (!nombre.trim()) { toast.error('El nombre interno es requerido'); return }
     if (!asunto.trim()) { toast.error('El asunto es requerido'); return }
     if (!contenido.trim()) { toast.error('El contenido es requerido'); return }
-    if (modoDestinatarios === 'segmento' && !segmentoId) { toast.error('Selecciona un segmento'); return }
-    if (modoDestinatarios === 'manual' && selectedIds.size === 0) { toast.error('Selecciona al menos un cliente en la pestaña Base de Clientes'); return }
+    if (!segmentoId) { toast.error('Selecciona un segmento'); return }
 
     setResolviendo(true)
     try {
-      const body = modoDestinatarios === 'segmento'
-        ? { segmento_id: Number(segmentoId) }
-        : { manual_ids: Array.from(selectedIds) }
       const res = await fetch('/api/campanas-email/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ segmento_id: Number(segmentoId) }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(json.error || 'Error al resolver destinatarios'); return }
@@ -550,9 +553,7 @@ function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedId
   async function handleConfirmarEnvio() {
     setEnviando(true)
     try {
-      const body = modoDestinatarios === 'segmento'
-        ? { nombre: nombre.trim(), asunto: asunto.trim(), contenido_html: contenido, segmento_id: Number(segmentoId) }
-        : { nombre: nombre.trim(), asunto: asunto.trim(), contenido_html: contenido, manual_ids: Array.from(selectedIds) }
+      const body = { nombre: nombre.trim(), asunto: asunto.trim(), contenido_html: contenido, segmento_id: Number(segmentoId) }
 
       const createRes = await fetch('/api/campanas-email', {
         method: 'POST',
@@ -613,33 +614,13 @@ function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedId
           <iframe title="preview-composer" sandbox="" srcDoc={contenido} className="w-full h-[300px] border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 mb-4" />
 
           <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Destinatarios</label>
-          <div className="flex items-center gap-4 mb-3">
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-              <input type="radio" checked={modoDestinatarios === 'segmento'} onChange={() => setModoDestinatarios('segmento')} className="text-[#1B2B8C]" />
-              Segmento guardado
-            </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-              <input type="radio" checked={modoDestinatarios === 'manual'} onChange={() => setModoDestinatarios('manual')} className="text-[#1B2B8C]" />
-              Selección manual
-            </label>
-          </div>
-
-          {modoDestinatarios === 'segmento' ? (
-            <select value={segmentoId} onChange={(e) => setSegmentoId(e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 mb-3">
-              <option value="">Selecciona un segmento…</option>
-              {segmentos.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg mb-3">
-              <Users size={14} className="text-gray-500 dark:text-gray-400" />
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                {selectedIds.size} cliente{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''} en Base de Clientes
-              </span>
-            </div>
-          )}
+          <select value={segmentoId} onChange={(e) => setSegmentoId(e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 mb-3">
+            <option value="">Selecciona un segmento…</option>
+            {segmentos.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-1">
-            <ShieldCheck size={12} /> Solo se envía a contactos con opt-in de email, sin excepción
+            <ShieldCheck size={12} /> Solo se envía a contactos con email registrado
           </p>
 
           <button
@@ -692,10 +673,9 @@ function ComponerSection({ selectedIds, brevoConfigurado, onSent }: { selectedId
 // ── Shell ────────────────────────────────────────────────────────────────────
 interface Props {
   userRol: Rol
-  selectedIds: Set<number>
 }
 
-export default function EmailMarketingTab({ selectedIds }: Props) {
+export default function EmailMarketingTab(_props: Props) {
   const [subTab, setSubTab] = useState<SubTab>('componer')
   const { data: estadoData, mutate: mutateEstado } = useSWR<{ configurado: boolean }>('/api/configuracion/integraciones/estado', fetcher)
   const brevoConfigurado = estadoData?.configurado ?? false
@@ -732,7 +712,6 @@ export default function EmailMarketingTab({ selectedIds }: Props) {
 
       {subTab === 'componer' && (
         <ComponerSection
-          selectedIds={selectedIds}
           brevoConfigurado={brevoConfigurado}
           onSent={() => mutateEstado()}
         />

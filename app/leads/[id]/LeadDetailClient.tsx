@@ -11,10 +11,9 @@ import { Skeleton } from '@/components/ui/SkeletonLoader'
 import ErrorState from '@/components/ui/ErrorState'
 import {
   cn, formatDate, formatDateTime, ESTADO_LABELS, LEAD_SCORE_LABELS, LEAD_SCORE_OPTIONS, getLeadScoreColor, getContrastTextColor,
-  ESTADO_FACTURA_LABELS, ESTADO_FACTURA_COLORS, ESTADO_FACTURA_OPTIONS, MEDIO_PAGO_LABELS, MEDIO_PAGO_OPTIONS,
 } from '@/lib/utils'
-import type { Contacto, MensajeHistorial, EstadoLead, LeadScore, Rol, UsuarioCRM, Nota, Compra, Canal, ContactoVinculado, SugerenciaVinculacion, Etiqueta, EstadoFactura, MedioPago } from '@/lib/types'
-import { ArrowLeft, Phone, Mail, Calendar, Pencil, X, User, Check, ChevronDown, Play, Pause, Plus, ShoppingBag, Link2, UserCheck, Handshake, CheckCircle, Send, Trash2, Tag, Receipt, Paperclip } from 'lucide-react'
+import type { Contacto, MensajeHistorial, EstadoLead, LeadScore, Rol, UsuarioCRM, Nota, Canal, ContactoVinculado, SugerenciaVinculacion, Etiqueta } from '@/lib/types'
+import { ArrowLeft, Phone, Mail, Calendar, Pencil, X, User, Check, ChevronDown, Play, Pause, Plus, Link2, UserCheck, Handshake, CheckCircle, Send, Trash2, Tag, Paperclip } from 'lucide-react'
 import { FaWhatsapp, FaInstagram, FaFacebookMessenger } from 'react-icons/fa'
 import { fetcher } from '@/lib/fetcher'
 import Spinner from '@/components/ui/Spinner'
@@ -30,10 +29,6 @@ const ROL_LABELS: Record<Rol, string> = {
 }
 
 const CANAL_ORDER: Canal[] = ['whatsapp', 'telegram', 'messenger', 'instagram', 'web']
-
-function formatUSD(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { maximumFractionDigits: amount % 1 === 0 ? 0 : 2 })}`
-}
 
 export interface CanalRespuestaOpcion {
   label: string
@@ -382,41 +377,6 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
   const [savingNota, setSavingNota] = useState(false)
   const [togglingNotaId, setTogglingNotaId] = useState<number | null>(null)
 
-  // Facturación (tabla compras_crm) — la tabla es visible para todos los roles;
-  // solo admin/comercial pueden registrar nuevas facturas (editar/eliminar sí está abierto a ventas)
-  const canManageCompras = true
-  const canCreateFactura = userRol === 'admin' || userRol === 'comercial'
-  const { data: comprasData, error: comprasError, mutate: mutateCompras } = useSWR<{ compras: Compra[] }>(
-    `/api/contactos/${id}/compras`,
-    fetcher,
-    { refreshInterval: 10000 }
-  )
-  const compras = comprasData?.compras ?? []
-  const totalComprasUSD = compras.reduce((sum, c) => sum + (c.precio ?? 0), 0)
-  const [nuevoNumeroFactura, setNuevoNumeroFactura] = useState('')
-  const [nuevoProducto, setNuevoProducto] = useState('')
-  const [nuevoPrecio, setNuevoPrecio] = useState('')
-  const [nuevoEstadoFactura, setNuevoEstadoFactura] = useState<EstadoFactura>('pendiente')
-  const [nuevoMedioPago, setNuevoMedioPago] = useState<MedioPago | ''>('')
-  const [nuevasNotasCompra, setNuevasNotasCompra] = useState('')
-  const [savingCompra, setSavingCompra] = useState(false)
-  const [numeroFacturaError, setNumeroFacturaError] = useState(false)
-
-  // Edición de factura existente
-  const [editingFactura, setEditingFactura] = useState<Compra | null>(null)
-  const [editNumeroFactura, setEditNumeroFactura] = useState('')
-  const [editProducto, setEditProducto] = useState('')
-  const [editPrecio, setEditPrecio] = useState('')
-  const [editEstado, setEditEstado] = useState<EstadoFactura>('pendiente')
-  const [editMedioPago, setEditMedioPago] = useState<MedioPago | ''>('')
-  const [editNotas, setEditNotas] = useState('')
-  const [editNumeroFacturaError, setEditNumeroFacturaError] = useState(false)
-  const [savingEditFactura, setSavingEditFactura] = useState(false)
-
-  // Eliminación de factura existente
-  const [deletingFactura, setDeletingFactura] = useState<Compra | null>(null)
-  const [deletingFacturaLoading, setDeletingFacturaLoading] = useState(false)
-
   // Vinculación manual de leads (tabla leads_vinculados) — solo comercial/admin
   const { data: vinculadosData, error: vinculadosError, mutate: mutateVinculados } = useSWR<{ vinculados: ContactoVinculado[] }>(
     canAssign ? `/api/contactos/${id}/vinculados` : null,
@@ -662,99 +622,6 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
     finally { setTogglingNotaId(null) }
   }
 
-  async function addCompra() {
-    const numeroFactura = nuevoNumeroFactura.trim()
-    if (!numeroFactura) {
-      setNumeroFacturaError(true)
-      return
-    }
-    const producto = nuevoProducto.trim()
-    if (!producto) return
-    setNumeroFacturaError(false)
-    setSavingCompra(true)
-    try {
-      const res = await fetch(`/api/contactos/${id}/compras`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          numero_factura: numeroFactura,
-          producto,
-          precio: nuevoPrecio.trim() === '' ? null : Number(nuevoPrecio),
-          estado: nuevoEstadoFactura,
-          medio_pago: nuevoMedioPago || null,
-          notas: nuevasNotasCompra.trim() || null,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) { toast.error(json.error || 'Error al registrar factura'); return }
-      await mutateCompras()
-      setNuevoNumeroFactura('')
-      setNuevoProducto('')
-      setNuevoPrecio('')
-      setNuevoEstadoFactura('pendiente')
-      setNuevoMedioPago('')
-      setNuevasNotasCompra('')
-      toast.success('Factura registrada')
-    } catch { toast.error('Error de conexión') }
-    finally { setSavingCompra(false) }
-  }
-
-  function openEditFactura(compra: Compra) {
-    setEditingFactura(compra)
-    setEditNumeroFactura(compra.numero_factura ?? '')
-    setEditProducto(compra.producto)
-    setEditPrecio(compra.precio != null ? String(compra.precio) : '')
-    setEditEstado(compra.estado)
-    setEditMedioPago(compra.medio_pago ?? '')
-    setEditNotas(compra.notas ?? '')
-    setEditNumeroFacturaError(false)
-  }
-
-  async function saveEditFactura() {
-    if (!editingFactura) return
-    const numeroFactura = editNumeroFactura.trim()
-    if (!numeroFactura) {
-      setEditNumeroFacturaError(true)
-      return
-    }
-    const producto = editProducto.trim()
-    if (!producto) return
-    setSavingEditFactura(true)
-    try {
-      const res = await fetch(`/api/contactos/${id}/compras/${editingFactura.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          numero_factura: numeroFactura,
-          producto,
-          precio: editPrecio.trim() === '' ? null : Number(editPrecio),
-          estado: editEstado,
-          medio_pago: editMedioPago || null,
-          notas: editNotas.trim() || null,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) { toast.error(json.error || 'Error al actualizar factura'); return }
-      await mutateCompras()
-      setEditingFactura(null)
-      toast.success('Factura actualizada')
-    } catch { toast.error('Error de conexión') }
-    finally { setSavingEditFactura(false) }
-  }
-
-  async function confirmDeleteFactura() {
-    if (!deletingFactura) return
-    setDeletingFacturaLoading(true)
-    try {
-      const res = await fetch(`/api/contactos/${id}/compras/${deletingFactura.id}`, { method: 'DELETE' })
-      if (!res.ok) { const json = await res.json().catch(() => ({})); toast.error(json.error || 'Error al eliminar factura'); return }
-      await mutateCompras()
-      setDeletingFactura(null)
-      toast.success('Factura eliminada')
-    } catch { toast.error('Error de conexión') }
-    finally { setDeletingFacturaLoading(false) }
-  }
-
   async function vincularLead(targetId: number) {
     setVinculando(true)
     try {
@@ -955,15 +822,6 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
             <CanalIcon canal={lead.canal} size={14} showLabel />
             <span className="text-empty">•</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Desde {formatDate(lead.fecha_primer_contacto)}</span>
-            {canManageCompras && compras.length > 0 && (
-              <>
-                <span className="text-empty">•</span>
-                <span className="inline-flex items-center gap-1 text-xs font-medium bg-[#1B2B8C]/10 text-[#1B2B8C] px-2 py-0.5 rounded-full">
-                  <ShoppingBag size={11} />
-                  {compras.length} {compras.length === 1 ? 'compra' : 'compras'} · {formatUSD(totalComprasUSD)} USD
-                </span>
-              </>
-            )}
           </div>
         </div>
         {canDelete && (
@@ -1553,173 +1411,6 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
             </div>
           </div>
 
-          {/* Historial de facturación */}
-          {canManageCompras && (
-            <div className="bg-white dark:bg-midnight-surface rounded-xl border border-gray-100 dark:border-midnight-border shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Historial de facturación</h3>
-                {compras.length > 0 && (
-                  <span className="text-xs font-medium bg-[#1B2B8C]/10 dark:bg-[#4A9FD8]/10 text-[#1B2B8C] dark:text-[#4A9FD8] px-2 py-0.5 rounded-full">
-                    {compras.length} {compras.length === 1 ? 'factura' : 'facturas'} · {formatUSD(totalComprasUSD)} USD
-                  </span>
-                )}
-              </div>
-
-              <div className="mb-3 max-h-72 overflow-auto">
-                {comprasError ? (
-                  <ErrorState message="No se pudieron cargar las facturas" onRetry={() => mutateCompras()} />
-                ) : compras.length === 0 ? (
-                  <p className="text-sm text-empty italic">Sin facturas registradas</p>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
-                        <th className="py-1.5 pr-2 font-medium">N° Factura</th>
-                        <th className="py-1.5 pr-2 font-medium">Producto</th>
-                        <th className="py-1.5 pr-2 font-medium">Valor</th>
-                        <th className="py-1.5 pr-2 font-medium">Estado</th>
-                        <th className="py-1.5 pr-2 font-medium">Medio de pago</th>
-                        <th className="py-1.5 pr-2 font-medium">Fecha</th>
-                        <th className="py-1.5 pr-2 font-medium">Vendedor</th>
-                        <th className="py-1.5 font-medium"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {compras.map((compra) => (
-                        <tr key={compra.id} className="border-b border-gray-50 dark:border-white/5 last:border-0 align-top">
-                          <td className="py-2 pr-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{compra.numero_factura || '—'}</td>
-                          <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">
-                            <p className="font-medium">{compra.producto}</p>
-                            {compra.notas && <p className="text-gray-500 dark:text-gray-400 mt-0.5">{compra.notas}</p>}
-                          </td>
-                          <td className="py-2 pr-2 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                            {compra.precio != null ? `${formatUSD(compra.precio)} USD` : '—'}
-                          </td>
-                          <td className="py-2 pr-2">
-                            <span className={cn(
-                              'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border',
-                              ESTADO_FACTURA_COLORS[compra.estado]
-                            )}>
-                              {ESTADO_FACTURA_LABELS[compra.estado]}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                            {compra.medio_pago ? MEDIO_PAGO_LABELS[compra.medio_pago] : '—'}
-                          </td>
-                          <td className="py-2 pr-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(compra.fecha_compra)}</td>
-                          <td className="py-2 pr-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{compra.vendedor_nombre ?? '—'}</td>
-                          <td className="py-2 whitespace-nowrap">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => openEditFactura(compra)}
-                                title="Editar factura"
-                                className="p-1 text-gray-500 dark:text-gray-400 hover:text-[#1B2B8C] dark:hover:text-[#4A9FD8] hover:bg-[#1B2B8C]/5 dark:hover:bg-[#4A9FD8]/10 rounded transition-colors"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                onClick={() => setDeletingFactura(compra)}
-                                title="Eliminar factura"
-                                className="p-1 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {canCreateFactura && (
-                <div className="space-y-2 pt-3 border-t border-gray-50 dark:border-white/5">
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Registrar factura</p>
-                  <div>
-                    <input
-                      type="text"
-                      required
-                      value={nuevoNumeroFactura}
-                      onChange={(e) => {
-                        setNuevoNumeroFactura(e.target.value)
-                        if (numeroFacturaError) setNumeroFacturaError(false)
-                      }}
-                      placeholder="N° Factura *"
-                      className={cn(
-                        'w-full text-sm px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-2 transition-all',
-                        numeroFacturaError
-                          ? 'border-red-300 dark:border-red-500/40 focus:ring-red-100 dark:focus:ring-red-500/20 focus:border-red-400'
-                          : 'border-gray-200 dark:border-white/10 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100'
-                      )}
-                    />
-                    {numeroFacturaError && (
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">El N° de factura es obligatorio</p>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={nuevoProducto}
-                    onChange={(e) => setNuevoProducto(e.target.value)}
-                    placeholder="Producto / Descripción"
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                  />
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={nuevoPrecio}
-                      onChange={(e) => setNuevoPrecio(e.target.value)}
-                      placeholder="Valor pagado USD"
-                      min="0"
-                      step="0.01"
-                      className="flex-1 min-w-0 text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                    />
-                    <div className="relative flex-1 min-w-0">
-                      <select
-                        value={nuevoEstadoFactura}
-                        onChange={(e) => setNuevoEstadoFactura(e.target.value as EstadoFactura)}
-                        className="w-full appearance-none text-sm px-2.5 py-1.5 pr-7 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all cursor-pointer"
-                      >
-                        {ESTADO_FACTURA_OPTIONS.map((e) => (
-                          <option key={e} value={e}>{ESTADO_FACTURA_LABELS[e]}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <select
-                      value={nuevoMedioPago}
-                      onChange={(e) => setNuevoMedioPago(e.target.value as MedioPago | '')}
-                      className="w-full appearance-none text-sm px-2.5 py-1.5 pr-7 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all cursor-pointer"
-                    >
-                      <option value="">Medio de pago…</option>
-                      {MEDIO_PAGO_OPTIONS.map((m) => (
-                        <option key={m} value={m}>{MEDIO_PAGO_LABELS[m]}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                  </div>
-                  <input
-                    type="text"
-                    value={nuevasNotasCompra}
-                    onChange={(e) => setNuevasNotasCompra(e.target.value)}
-                    placeholder="Notas adicionales"
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                  />
-                  <button
-                    onClick={addCompra}
-                    disabled={savingCompra || !nuevoProducto.trim()}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: '#1B2B8C' }}
-                  >
-                    {savingCompra ? <Spinner state="working" /> : <Receipt size={14} />}
-                    Registrar
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Chat history */}
@@ -2000,7 +1691,7 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
             >
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">¿Eliminar este lead?</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                Se eliminará todo su historial, notas y compras. Esta acción no se puede deshacer.
+                Se eliminará todo su historial y notas. Esta acción no se puede deshacer.
               </p>
               <div className="flex items-center justify-end gap-2">
                 <button
@@ -2091,176 +1782,6 @@ export default function LeadDetailClient({ id, userRol, puedeEliminar }: Props) 
         )}
       </AnimatePresence>
 
-      {/* Modal: editar factura */}
-      <AnimatePresence>
-        {editingFactura && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-            onClick={() => !savingEditFactura && setEditingFactura(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-midnight-surface rounded-xl shadow-lg w-full max-w-md p-5"
-            >
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Editar factura</h3>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">N° Factura *</label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={editNumeroFactura}
-                    onChange={(e) => {
-                      setEditNumeroFactura(e.target.value)
-                      if (editNumeroFacturaError) setEditNumeroFacturaError(false)
-                    }}
-                    className={cn(
-                      'w-full text-sm px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 transition-all',
-                      editNumeroFacturaError
-                        ? 'border-red-300 dark:border-red-500/40 focus:ring-red-100 dark:focus:ring-red-500/20 focus:border-red-400'
-                        : 'border-gray-200 dark:border-white/10 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100'
-                    )}
-                  />
-                  {editNumeroFacturaError && (
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">El N° de factura es obligatorio</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">Producto / Descripción</label>
-                  <input
-                    type="text"
-                    value={editProducto}
-                    onChange={(e) => setEditProducto(e.target.value)}
-                    className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">Valor pagado USD</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={editPrecio}
-                      onChange={(e) => setEditPrecio(e.target.value)}
-                      className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">Estado</label>
-                    <div className="relative">
-                      <select
-                        value={editEstado}
-                        onChange={(e) => setEditEstado(e.target.value as EstadoFactura)}
-                        className="w-full appearance-none text-sm px-3 py-2 pr-7 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all cursor-pointer"
-                      >
-                        {ESTADO_FACTURA_OPTIONS.map((e) => (
-                          <option key={e} value={e}>{ESTADO_FACTURA_LABELS[e]}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">Medio de pago</label>
-                  <div className="relative">
-                    <select
-                      value={editMedioPago}
-                      onChange={(e) => setEditMedioPago(e.target.value as MedioPago | '')}
-                      className="w-full appearance-none text-sm px-3 py-2 pr-7 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all cursor-pointer"
-                    >
-                      <option value="">Sin especificar</option>
-                      {MEDIO_PAGO_OPTIONS.map((m) => (
-                        <option key={m} value={m}>{MEDIO_PAGO_LABELS[m]}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">Notas adicionales</label>
-                  <input
-                    type="text"
-                    value={editNotas}
-                    onChange={(e) => setEditNotas(e.target.value)}
-                    className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] transition-all bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-4 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setEditingFactura(null)}
-                  disabled={savingEditFactura}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={saveEditFactura}
-                  disabled={savingEditFactura || !editProducto.trim()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#1B2B8C' }}
-                >
-                  {savingEditFactura ? <Spinner state="working" /> : <Check size={14} />}
-                  Guardar cambios
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal: eliminar factura */}
-      <AnimatePresence>
-        {deletingFactura && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-            onClick={() => !deletingFacturaLoading && setDeletingFactura(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-midnight-surface rounded-xl shadow-lg w-full max-w-sm p-5"
-            >
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">¿Eliminar esta factura?</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">Esta acción no se puede deshacer.</p>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setDeletingFactura(null)}
-                  disabled={deletingFacturaLoading}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteFactura}
-                  disabled={deletingFacturaLoading}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {deletingFacturaLoading ? <Spinner state="working" /> : <Trash2 size={14} />}
-                  Eliminar permanentemente
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Lightbox: imagen del historial a pantalla completa */}
       <AnimatePresence>

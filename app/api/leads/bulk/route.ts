@@ -29,7 +29,6 @@ export async function DELETE(req: NextRequest) {
     await client.query('BEGIN')
     await client.query('DELETE FROM historial_conversaciones WHERE id_contacto = ANY($1::int[])', [ids])
     await client.query('DELETE FROM notas_crm WHERE contacto_id = ANY($1::int[])', [ids])
-    await client.query('DELETE FROM compras_crm WHERE contacto_id = ANY($1::int[])', [ids])
     await client.query(
       'DELETE FROM leads_vinculados WHERE contacto_principal_id = ANY($1::int[]) OR contacto_vinculado_id = ANY($1::int[])',
       [ids]

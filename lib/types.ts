@@ -58,25 +58,6 @@ export interface Nota {
   usuario_nombre?: string
 }
 
-export type EstadoFactura = 'pendiente' | 'pagado' | 'anulado'
-
-export type MedioPago = 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'efectivo' | 'canje'
-
-export interface Compra {
-  id: number
-  contacto_id: number
-  producto: string
-  precio: number | null
-  canal: string | null
-  notas: string | null
-  vendedor_id: number | null
-  fecha_compra: string
-  numero_factura: string | null
-  estado: EstadoFactura
-  medio_pago: MedioPago | null
-  vendedor_nombre?: string
-}
-
 export interface ContactoVinculado {
   vinculacion_id: number
   fecha_vinculacion: string
@@ -130,6 +111,11 @@ export interface VentaPorDia {
   total: number
 }
 
+// Ligado a compras_crm (descartada). Se mantiene solo para que /dashboard siga
+// compilando hasta que la sección de facturación se reemplace por las métricas
+// de negocios/campañas/proyectos del Bloque 7.
+export type MedioPago = 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'efectivo' | 'canje'
+
 export interface DistribucionMedioPago {
   medio_pago: MedioPago | null
   total: number
@@ -167,47 +153,16 @@ export interface DashboardMetrics {
   facturacion_por_vendedor: FacturacionPorVendedor[]
 }
 
-export type TipoCliente = 'blackbull' | 'gift_card'
-
-export interface ProgramaCliente {
-  id: number
-  tipo_cliente: TipoCliente
-  card: string | null
-  activo: boolean
-  customer_id: string | null
-  numero_tarjeta: string | null
-  numero_tarjeta_ext: string | null
-  nombre: string | null
-  apellido: string | null
-  telefono: string | null
-  email: string | null
-  opt_in_email: boolean
-  opt_in_sms: boolean
-  tiene_wallet: boolean
-  fecha_signup: string | null
-  fecha_ultima_accion: string | null
-  fecha_carga: string
-  cargado_por: number | null
-}
-
-export interface ProgramaClientesKpis {
-  total_blackbull_activos: number
-  total_gift_card_activos: number
-  pct_opt_in_email: number
-  pct_opt_in_sms: number
-  pct_wallet: number
-  nuevos_este_mes: number
-  inactivos_90_dias: number
-}
-
+// Filtros de segmentación de contactos para email marketing. A diferencia
+// del CRM de Bullpadel (que segmentaba sobre `programa_clientes`, una base
+// de lealtad de e-commerce), acá se segmenta directo sobre `contactos`.
 export interface SegmentoFiltros {
-  tipo_cliente?: TipoCliente
-  activo?: boolean
-  tiene_wallet?: boolean
-  signup_desde?: string
-  signup_hasta?: string
-  accion_desde?: string
-  accion_hasta?: string
+  estado_lead?: EstadoLead
+  canal?: Canal
+  lead_score?: LeadScore
+  vendedor_asignado_id?: number
+  contacto_desde?: string
+  contacto_hasta?: string
 }
 
 export interface SegmentoEmail {

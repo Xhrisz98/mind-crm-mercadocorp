@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { EstadoLead, LeadScore, EstadoFactura, MedioPago } from './types'
+import type { EstadoLead, LeadScore, MedioPago } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -37,20 +37,7 @@ export const LEAD_SCORE_LABELS: Record<LeadScore, string> = {
 
 export const LEAD_SCORE_OPTIONS: LeadScore[] = ['frio', 'tibio', 'caliente', 'cliente']
 
-export const ESTADO_FACTURA_LABELS: Record<EstadoFactura, string> = {
-  pendiente: 'Pendiente',
-  pagado: 'Pagado',
-  anulado: 'Anulado',
-}
-
-export const ESTADO_FACTURA_COLORS: Record<EstadoFactura, string> = {
-  pendiente: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20',
-  pagado: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20',
-  anulado: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
-}
-
-export const ESTADO_FACTURA_OPTIONS: EstadoFactura[] = ['pendiente', 'pagado', 'anulado']
-
+// Ligado a compras_crm (descartada) — ver nota en lib/types.ts sobre MedioPago.
 export const MEDIO_PAGO_LABELS: Record<MedioPago, string> = {
   tarjeta_debito: 'Tarjeta débito',
   tarjeta_credito: 'Tarjeta crédito',
@@ -58,10 +45,6 @@ export const MEDIO_PAGO_LABELS: Record<MedioPago, string> = {
   efectivo: 'Efectivo',
   canje: 'Canje',
 }
-
-export const MEDIO_PAGO_OPTIONS: MedioPago[] = [
-  'tarjeta_debito', 'tarjeta_credito', 'transferencia', 'efectivo', 'canje',
-]
 
 export function getLeadScoreColor(score: LeadScore): string {
   if (score === 'caliente') return 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-500/10'

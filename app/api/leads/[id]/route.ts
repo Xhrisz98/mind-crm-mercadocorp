@@ -147,7 +147,6 @@ export async function DELETE(
     await client.query('BEGIN')
     await client.query('DELETE FROM historial_conversaciones WHERE id_contacto = $1', [id])
     await client.query('DELETE FROM notas_crm WHERE contacto_id = $1', [id])
-    await client.query('DELETE FROM compras_crm WHERE contacto_id = $1', [id])
     await client.query(
       'DELETE FROM leads_vinculados WHERE contacto_principal_id = $1 OR contacto_vinculado_id = $1',
       [id]

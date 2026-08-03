@@ -10,10 +10,10 @@ import { TableSkeleton } from '@/components/ui/SkeletonLoader'
 import ErrorState from '@/components/ui/ErrorState'
 import KanbanByEstado from '@/components/kanban/KanbanByEstado'
 import KanbanByScore from '@/components/kanban/KanbanByScore'
-import { cn, getLeadScoreDot, getContrastTextColor, LEAD_SCORE_LABELS, formatDate, ESTADO_LABELS, ESTADO_FACTURA_LABELS, ESTADO_FACTURA_OPTIONS, MEDIO_PAGO_LABELS, MEDIO_PAGO_OPTIONS } from '@/lib/utils'
+import { cn, getLeadScoreDot, getContrastTextColor, LEAD_SCORE_LABELS, formatDate, ESTADO_LABELS } from '@/lib/utils'
 import { fetcher } from '@/lib/fetcher'
 import type { Contacto, EstadoLead, Canal, Rol, Etiqueta } from '@/lib/types'
-import { Search, Filter, ChevronLeft, ChevronRight, Table2, Columns3, BarChart2, PauseCircle, Trash2, Download, Tag, Receipt, UserPlus } from 'lucide-react'
+import { Search, Filter, ChevronLeft, ChevronRight, Table2, Columns3, BarChart2, PauseCircle, Trash2, Download, Tag, UserPlus } from 'lucide-react'
 import Spinner from '@/components/ui/Spinner'
 
 type Vista = 'tabla' | 'kanban_estado' | 'kanban_score'
@@ -107,14 +107,6 @@ export default function LeadsClient({ userRol, puedeEliminar }: Props) {
   const [exportHasta, setExportHasta] = useState('')
   const [exportCanal, setExportCanal] = useState('')
   const [exportEstado, setExportEstado] = useState('')
-
-  // Exportar Facturación CSV — admin y comercial
-  const [showExportFacturaModal, setShowExportFacturaModal] = useState(false)
-  const [exportingFactura, setExportingFactura] = useState(false)
-  const [exportFacturaDesde, setExportFacturaDesde] = useState('')
-  const [exportFacturaHasta, setExportFacturaHasta] = useState('')
-  const [exportFacturaEstado, setExportFacturaEstado] = useState('')
-  const [exportFacturaMedioPago, setExportFacturaMedioPago] = useState('')
 
   useEffect(() => {
     setSelectedIds(new Set())
@@ -291,42 +283,6 @@ export default function LeadsClient({ userRol, puedeEliminar }: Props) {
     finally { setExporting(false) }
   }
 
-  async function handleExportFacturaCsv() {
-    setExportingFactura(true)
-    try {
-      const params = new URLSearchParams()
-      if (exportFacturaDesde)     params.set('desde',      exportFacturaDesde)
-      if (exportFacturaHasta)     params.set('hasta',      exportFacturaHasta)
-      if (exportFacturaEstado)    params.set('estado',     exportFacturaEstado)
-      if (exportFacturaMedioPago) params.set('medio_pago', exportFacturaMedioPago)
-
-      const res = await fetch(`/api/facturacion/export?${params}`)
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        toast.error(json.error || 'Error al generar el CSV')
-        return
-      }
-
-      const blob = await res.blob()
-      const disposition = res.headers.get('Content-Disposition') || ''
-      const match = disposition.match(/filename="?([^"]+)"?/)
-      const filename = match?.[1] || `facturacion_bullpadel_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`
-
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-
-      toast.success('CSV descargado')
-      setShowExportFacturaModal(false)
-    } catch { toast.error('Error de conexión') }
-    finally { setExportingFactura(false) }
-  }
-
   return (
     <div className="p-6 lg:p-8">
       {/* ── Header ─────────────────────────────────────────────── */}
@@ -403,17 +359,6 @@ export default function LeadsClient({ userRol, puedeEliminar }: Props) {
             >
               <Download size={15} />
               Exportar CSV
-            </button>
-          )}
-
-          {/* Export Facturación CSV button */}
-          {canExport && (
-            <button
-              onClick={() => setShowExportFacturaModal(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 dark:border-white/10 bg-white dark:bg-midnight-surface text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-150"
-            >
-              <Receipt size={15} />
-              Exportar Facturación CSV
             </button>
           )}
         </div>
@@ -1030,96 +975,6 @@ export default function LeadsClient({ userRol, puedeEliminar }: Props) {
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#1B2B8C] rounded-lg hover:bg-[#1B2B8C]/90 active:scale-[0.98] transition-all duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {exporting ? <Spinner state="working" /> : <Download size={14} />}
-                  Descargar CSV
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal: exportar facturación a CSV */}
-      <AnimatePresence>
-        {showExportFacturaModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-            onClick={() => !exportingFactura && setShowExportFacturaModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-midnight-surface rounded-xl shadow-lg w-full max-w-md p-5"
-            >
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Exportar facturación a CSV</h3>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Desde</p>
-                  <input
-                    type="date"
-                    value={exportFacturaDesde}
-                    max={exportFacturaHasta || undefined}
-                    onChange={(e) => setExportFacturaDesde(e.target.value)}
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Hasta</p>
-                  <input
-                    type="date"
-                    value={exportFacturaHasta}
-                    min={exportFacturaDesde || undefined}
-                    onChange={(e) => setExportFacturaHasta(e.target.value)}
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Estado</p>
-                  <select
-                    value={exportFacturaEstado}
-                    onChange={(e) => setExportFacturaEstado(e.target.value)}
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all"
-                  >
-                    <option value="">Todos</option>
-                    {ESTADO_FACTURA_OPTIONS.map((e) => (
-                      <option key={e} value={e}>{ESTADO_FACTURA_LABELS[e]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Medio de pago</p>
-                  <select
-                    value={exportFacturaMedioPago}
-                    onChange={(e) => setExportFacturaMedioPago(e.target.value)}
-                    className="w-full text-sm px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 transition-all"
-                  >
-                    <option value="">Todos</option>
-                    {MEDIO_PAGO_OPTIONS.map((m) => (
-                      <option key={m} value={m}>{MEDIO_PAGO_LABELS[m]}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setShowExportFacturaModal(false)}
-                  disabled={exportingFactura}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleExportFacturaCsv}
-                  disabled={exportingFactura}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#1B2B8C] rounded-lg hover:bg-[#1B2B8C]/90 active:scale-[0.98] transition-all duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {exportingFactura ? <Spinner state="working" /> : <Download size={14} />}
                   Descargar CSV
                 </button>
               </div>

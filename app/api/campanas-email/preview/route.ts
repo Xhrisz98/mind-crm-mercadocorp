@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     count: destinatarios.length,
     sample: destinatarios.slice(0, 8).map((d) => ({
-      nombre: [d.nombre, d.apellido].filter(Boolean).join(' ') || null,
+      nombre: d.nombre,
       email: d.email,
     })),
   })
