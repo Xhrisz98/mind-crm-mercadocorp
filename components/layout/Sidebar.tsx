@@ -10,6 +10,7 @@ import type { JWTPayload } from '@/lib/types'
 import {
   LayoutDashboard,
   Users,
+  Handshake,
   Settings,
   LogOut,
   Menu,
@@ -52,6 +53,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/leads', label: 'Leads', icon: Users },
+  { href: '/negocios', label: 'Negocios', icon: Handshake },
   { href: '/campanas', label: 'Campañas', icon: Megaphone, roles: ['admin', 'comercial'] },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ]

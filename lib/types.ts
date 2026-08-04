@@ -104,6 +104,40 @@ export interface ActivityLog {
   usuario_nombre?: string
 }
 
+// Pipeline de Negocios — etapas personalizables por cliente vía datos (ver
+// scripts/001_schema_mercadocorp.sql sección 3). El código nunca debe
+// comparar por `nombre`; usar es_estado_ganado/es_estado_perdido para
+// identificar los estados terminales, y `orden` para las columnas del Kanban.
+export interface PipelineEstado {
+  id: number
+  nombre: string
+  orden: number
+  probabilidad_cierre: number
+  es_estado_ganado: boolean
+  es_estado_perdido: boolean
+  color: string
+}
+
+export interface Negocio {
+  id: number
+  contacto_id: number | null
+  nombre: string
+  monto: number
+  pipeline_estado_id: number
+  descripcion_servicio: string | null
+  fecha_cierre_estimada: string | null
+  vendedor_asignado_id: number | null
+  fecha_creacion: string
+  fecha_actualizacion: string
+  contacto_nombre?: string | null
+  vendedor_nombre?: string | null
+  pipeline_estado_nombre?: string
+  pipeline_estado_color?: string
+  pipeline_estado_orden?: number
+  es_estado_ganado?: boolean
+  es_estado_perdido?: boolean
+}
+
 export type Periodo = 'hoy' | 'semana' | 'mes' | 'total'
 
 export interface VentaPorDia {
@@ -114,6 +148,13 @@ export interface VentaPorDia {
 // Ligado a compras_crm (descartada). Se mantiene solo para que /dashboard siga
 // compilando hasta que la sección de facturación se reemplace por las métricas
 // de negocios/campañas/proyectos del Bloque 7.
+// PENDIENTE Bloque 7: app/api/dashboard/route.ts consulta compras_crm en runtime
+// (SUM/COUNT/GROUP BY sobre esa tabla) para ventas_periodo, facturas_emitidas,
+// ticket_promedio, por_cobrar, ventas_por_dia, distribucion_medio_pago,
+// top_productos y facturacion_por_vendedor. Al eliminar compras_crm, esas
+// queries van a fallar y toda la sección de facturación de /dashboard
+// (incluye PaymentMethodDonutChart) queda rota hasta que Bloque 7 la
+// reconstruya sobre negocios/campañas/proyectos. Compila hoy; falla en runtime.
 export type MedioPago = 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'efectivo' | 'canje'
 
 export interface DistribucionMedioPago {

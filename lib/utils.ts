@@ -88,6 +88,14 @@ export function formatDate(dateStr: string | null): string {
   })
 }
 
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('es-EC', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 export function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleString('es-EC', {
