@@ -166,6 +166,62 @@ export interface LeadsMetricas {
   leads_por_vendedor: { vendedor_nombre: string; count: number }[]
 }
 
+// Campañas de publicidad — registro manual (sin integración OAuth en vivo
+// con Google/Meta Ads, ver scripts/001_schema_mercadocorp.sql sección 4).
+export type PlataformaAds = 'google' | 'meta'
+export type EstadoCampanaPublicidad = 'activa' | 'pausada' | 'finalizada'
+
+// 3 categorías fijas (ver scripts/002_objetivo_campanas_publicidad.sql) — cada
+// una determina qué KPI se destaca en el detalle de la campaña:
+// reconocimiento→CTR, trafico→CPC, conversion→costo por conversión + ROI.
+export type ObjetivoCampana = 'reconocimiento' | 'trafico' | 'conversion'
+
+export interface CampanaPublicidad {
+  id: number
+  nombre: string
+  plataforma: PlataformaAds
+  cliente_id: number | null
+  objetivo: ObjetivoCampana | null
+  presupuesto: number | null
+  fecha_inicio: string | null
+  fecha_fin: string | null
+  estado: EstadoCampanaPublicidad
+  creado_por: number | null
+  fecha_creacion: string
+  cliente_nombre?: string | null
+  creado_por_nombre?: string | null
+  impresiones_total: number
+  clics_total: number
+  conversiones_total: number
+  gasto_total: number
+  // Solo presentes en el detalle (GET /api/campanas-publicidad/[id]). ROI es
+  // una estimación por rango de fechas + cliente vinculado (negocios ganados
+  // de ese contacto dentro del período de la campaña), no atribución exacta
+  // por campaña — ver comentario en la ruta.
+  ingreso_estimado?: number | null
+  roi_estimado_pct?: number | null
+}
+
+export interface CampanaMetricaDiaria {
+  id: number
+  campana_id: number
+  fecha: string
+  impresiones: number
+  clics: number
+  conversiones: number
+  gasto: number
+  registrado_por: number | null
+  fecha_registro: string
+  registrado_por_nombre?: string | null
+}
+
+export interface CampanaMetricaPorFecha {
+  fecha: string
+  impresiones: number
+  clics: number
+  conversiones: number
+}
+
 export type Periodo = 'hoy' | 'semana' | 'mes' | 'total'
 
 export interface VentaPorDia {

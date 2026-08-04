@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Megaphone,
+  Rocket,
   Sun,
   Moon,
 } from 'lucide-react'
@@ -55,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/leads', label: 'Leads', icon: Users },
   { href: '/negocios', label: 'Negocios', icon: Handshake },
   { href: '/campanas', label: 'Campañas', icon: Megaphone, roles: ['admin', 'comercial'] },
+  { href: '/campanas-publicidad', label: 'Publicidad', icon: Rocket, roles: ['admin', 'comercial'] },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ]
 
@@ -97,7 +99,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
       <nav className="flex-1 px-3 py-4 space-y-1">
         {visibleItems.map((item) => {
-          const active = pathname.startsWith(item.href)
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
           return (
             <Link
               key={item.href}

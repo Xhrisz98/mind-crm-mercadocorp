@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { EstadoLead, LeadScore, MedioPago } from './types'
+import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -43,6 +43,38 @@ export const LEAD_SCORE_OPTIONS: LeadScore[] = ['frio', 'tibio', 'caliente', 'cl
 export const ESTADO_FUNNEL_ORDEN: EstadoLead[] = [
   'inicial', 'nuevo', 'contactado', 'interesado', 'en_atencion_humana', 'en_negociacion', 'cliente',
 ]
+
+export const PLATAFORMA_ADS_LABELS: Record<PlataformaAds, string> = {
+  google: 'Google Ads',
+  meta: 'Meta Ads',
+}
+
+export const ESTADO_CAMPANA_PUBLICIDAD_LABELS: Record<EstadoCampanaPublicidad, string> = {
+  activa: 'Activa',
+  pausada: 'Pausada',
+  finalizada: 'Finalizada',
+}
+
+export const ESTADO_CAMPANA_PUBLICIDAD_COLORS: Record<EstadoCampanaPublicidad, string> = {
+  activa: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400',
+  pausada: 'bg-yellow-50 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
+  finalizada: 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300',
+}
+
+export const OBJETIVO_CAMPANA_LABELS: Record<ObjetivoCampana, string> = {
+  reconocimiento: 'Reconocimiento',
+  trafico: 'Tráfico',
+  conversion: 'Conversión',
+}
+
+// Qué tarjetas de KPI se destacan en el detalle de una campaña según su
+// objetivo — taxonomía estándar Google/Meta Ads (awareness→CTR,
+// traffic→CPC, conversion→costo por conversión + ROI).
+export const OBJETIVO_KPI_DESTACADO: Record<ObjetivoCampana, ('ctr' | 'cpc' | 'cpa' | 'roi')[]> = {
+  reconocimiento: ['ctr'],
+  trafico: ['cpc'],
+  conversion: ['cpa', 'roi'],
+}
 
 // Ligado a compras_crm (descartada) — ver nota en lib/types.ts sobre MedioPago.
 export const MEDIO_PAGO_LABELS: Record<MedioPago, string> = {
