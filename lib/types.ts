@@ -138,6 +138,34 @@ export interface Negocio {
   es_estado_perdido?: boolean
 }
 
+export interface FunnelEtapa {
+  estado: EstadoLead
+  count: number
+}
+
+export interface ConversionCanal {
+  canal: Canal
+  total: number
+  clientes: number
+  tasa: number
+}
+
+// Métricas propias de /leads/metricas — el funnel es una foto de la
+// distribución actual de estado_lead (no un análisis de cohorte por fecha de
+// entrada a cada etapa). Ver app/api/leads/metricas/route.ts.
+export interface LeadsMetricas {
+  periodo: Periodo
+  total_leads: number
+  funnel: FunnelEtapa[]
+  perdidos: number
+  leads_por_canal: Record<string, number>
+  conversion_rate: number
+  conversion_por_canal: ConversionCanal[]
+  // Vacío para rol 'ventas' (ver ruta): el desglose por vendedor no aporta
+  // nada cuando el usuario ya ve solo sus propios leads.
+  leads_por_vendedor: { vendedor_nombre: string; count: number }[]
+}
+
 export type Periodo = 'hoy' | 'semana' | 'mes' | 'total'
 
 export interface VentaPorDia {

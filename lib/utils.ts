@@ -37,6 +37,13 @@ export const LEAD_SCORE_LABELS: Record<LeadScore, string> = {
 
 export const LEAD_SCORE_OPTIONS: LeadScore[] = ['frio', 'tibio', 'caliente', 'cliente']
 
+// Orden canónico del funnel de leads en /leads/metricas. 'perdido' se excluye
+// del cuerpo del funnel (es una salida, no una etapa de avance) y se reporta
+// aparte como conteo de leads perdidos.
+export const ESTADO_FUNNEL_ORDEN: EstadoLead[] = [
+  'inicial', 'nuevo', 'contactado', 'interesado', 'en_atencion_humana', 'en_negociacion', 'cliente',
+]
+
 // Ligado a compras_crm (descartada) — ver nota en lib/types.ts sobre MedioPago.
 export const MEDIO_PAGO_LABELS: Record<MedioPago, string> = {
   tarjeta_debito: 'Tarjeta débito',

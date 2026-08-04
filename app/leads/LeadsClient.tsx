@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import useSWR from 'swr'
 import { motion, AnimatePresence } from 'framer-motion'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import Badge from '@/components/ui/Badge'
@@ -13,7 +14,7 @@ import KanbanByScore from '@/components/kanban/KanbanByScore'
 import { cn, getLeadScoreDot, getContrastTextColor, LEAD_SCORE_LABELS, formatDate, ESTADO_LABELS } from '@/lib/utils'
 import { fetcher } from '@/lib/fetcher'
 import type { Contacto, EstadoLead, Canal, Rol, Etiqueta } from '@/lib/types'
-import { Search, Filter, ChevronLeft, ChevronRight, Table2, Columns3, BarChart2, PauseCircle, Trash2, Download, Tag, UserPlus } from 'lucide-react'
+import { Search, Filter, ChevronLeft, ChevronRight, Table2, Columns3, BarChart2, PauseCircle, Trash2, Download, Tag, UserPlus, LineChart } from 'lucide-react'
 import Spinner from '@/components/ui/Spinner'
 
 type Vista = 'tabla' | 'kanban_estado' | 'kanban_score'
@@ -339,6 +340,15 @@ export default function LeadsClient({ userRol, puedeEliminar }: Props) {
               <span className="w-2 h-2 rounded-full bg-[#CE142B]" />
             )}
           </button>
+
+          {/* Métricas de leads */}
+          <Link
+            href="/leads/metricas"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 dark:border-white/10 bg-white dark:bg-midnight-surface text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-150"
+          >
+            <LineChart size={15} />
+            <span className="hidden sm:inline">Métricas</span>
+          </Link>
 
           {/* Crear lead manualmente */}
           {canCreateManual && (
