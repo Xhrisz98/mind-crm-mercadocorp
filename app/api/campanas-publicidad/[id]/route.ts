@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
-import type { CampanaPublicidad, CampanaMetricaDiaria } from '@/lib/types'
+import { evaluarFormulaRatio } from '@/lib/formulas'
+import type { CampanaPublicidad, CampanaMetricaValor, FormulaPersonalizada, FormulaValor } from '@/lib/types'
 
 const SELECT_CAMPANA = `
   SELECT cp.*,
     c.nombre as cliente_nombre,
-    u.nombre as creado_por_nombre,
-    COALESCE(SUM(cm.impresiones), 0)::int as impresiones_total,
-    COALESCE(SUM(cm.clics), 0)::int as clics_total,
-    COALESCE(SUM(cm.conversiones), 0)::int as conversiones_total,
-    COALESCE(SUM(cm.gasto), 0) as gasto_total
+    u.nombre as creado_por_nombre
   FROM public.campanas_publicidad cp
   LEFT JOIN public.contactos c ON c.id = cp.cliente_id
   LEFT JOIN public.usuarios_crm u ON u.id = cp.creado_por
-  LEFT JOIN public.campanas_metricas cm ON cm.campana_id = cp.id
 `
-const GROUP_BY_CAMPANA = 'GROUP BY cp.id, c.nombre, u.nombre'
 
 function checkAcceso(rol: string) {
   return rol === 'admin' || rol === 'comercial'
@@ -33,25 +28,58 @@ export async function GET(
   const id = parseInt(params.id)
   if (Number.isNaN(id)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
 
-  const campana = await queryOne<CampanaPublicidad>(
-    `${SELECT_CAMPANA} WHERE cp.id = $1 ${GROUP_BY_CAMPANA}`,
-    [id]
-  )
+  const campana = await queryOne<CampanaPublicidad>(`${SELECT_CAMPANA} WHERE cp.id = $1`, [id])
   if (!campana) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
-  const metricas = await query<CampanaMetricaDiaria>(
-    `SELECT cm.*, u.nombre as registrado_por_nombre
-     FROM public.campanas_metricas cm
-     LEFT JOIN public.usuarios_crm u ON u.id = cm.registrado_por
-     WHERE cm.campana_id = $1
-     ORDER BY cm.fecha DESC`,
+  const metricas = await query<CampanaMetricaValor>(
+    `SELECT cmv.*, md.clave as metrica_clave, md.nombre as metrica_nombre, md.unidad as metrica_unidad,
+        u.nombre as registrado_por_nombre
+     FROM public.campanas_metricas_valores cmv
+     JOIN public.metricas_definiciones md ON md.id = cmv.metrica_definicion_id
+     LEFT JOIN public.usuarios_crm u ON u.id = cmv.registrado_por
+     WHERE cmv.campana_id = $1
+     ORDER BY cmv.fecha DESC, md.clave ASC`,
     [id]
   )
+
+  // Totales de TODAS las métricas del catálogo para esta campaña (0 si nunca
+  // se registró) — alimenta tanto metricas_totales como la evaluación de
+  // fórmulas en TypeScript (más simple de mantener que interpretar el JSONB
+  // en SQL, suficientemente rápido para este volumen de datos).
+  const totalesRaw = await query<{ metrica_definicion_id: number; clave: string; total: string }>(
+    `SELECT md.id as metrica_definicion_id, md.clave, COALESCE(SUM(cmv.valor), 0) as total
+     FROM public.metricas_definiciones md
+     LEFT JOIN public.campanas_metricas_valores cmv ON cmv.metrica_definicion_id = md.id AND cmv.campana_id = $1
+     GROUP BY md.id, md.clave`,
+    [id]
+  )
+  const metricas_totales: Record<string, number> = {}
+  const valoresPorMetricaId: Record<number, number> = {}
+  for (const row of totalesRaw) {
+    const total = Number(row.total)
+    metricas_totales[row.clave] = total
+    valoresPorMetricaId[row.metrica_definicion_id] = total
+  }
+
+  const formulasDefinidas = await query<FormulaPersonalizada>(
+    `SELECT * FROM public.formulas_personalizadas WHERE es_default = TRUE OR archivada = FALSE ORDER BY es_default DESC, fecha_creacion ASC`
+  )
+  const formulas: FormulaValor[] = formulasDefinidas.map((f) => ({
+    id: f.id,
+    clave: f.clave,
+    nombre: f.nombre,
+    unidad: f.unidad,
+    es_default: f.es_default,
+    valor: evaluarFormulaRatio(f.definicion, valoresPorMetricaId),
+  }))
 
   // ROI estimado: negocios ganados del cliente vinculado a la campaña dentro
   // de su rango de fechas. Es una aproximación por rango+cliente, no
   // atribución exacta por campaña (un negocio ganado podría no venir de esta
-  // campaña específica) — de ahí el disclaimer que muestra la UI.
+  // campaña específica) — de ahí el disclaimer que muestra la UI. Caso
+  // especial fuera del catálogo de fórmulas: depende de `negocios`, no de
+  // valores registrados en campanas_metricas_valores.
+  const gastoTotal = metricas_totales['gasto'] ?? 0
   let ingreso_estimado: number | null = null
   if (campana.cliente_id) {
     const desde = campana.fecha_inicio ?? campana.fecha_creacion
@@ -68,12 +96,12 @@ export async function GET(
     ingreso_estimado = roiRow?.ingreso != null ? Number(roiRow.ingreso) : 0
   }
   const roi_estimado_pct =
-    ingreso_estimado != null && campana.gasto_total > 0
-      ? Math.round(((ingreso_estimado - campana.gasto_total) / campana.gasto_total) * 100)
+    ingreso_estimado != null && gastoTotal > 0
+      ? Math.round(((ingreso_estimado - gastoTotal) / gastoTotal) * 100)
       : null
 
   return NextResponse.json({
-    campana: { ...campana, ingreso_estimado, roi_estimado_pct },
+    campana: { ...campana, metricas_totales, formulas, ingreso_estimado, roi_estimado_pct },
     metricas,
   })
 }
@@ -119,10 +147,11 @@ export async function PATCH(
   )
   if (result.length === 0) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
-  const campana = await queryOne<CampanaPublicidad>(
-    `${SELECT_CAMPANA} WHERE cp.id = $1 ${GROUP_BY_CAMPANA}`,
+  const campanaRow = await queryOne<Omit<CampanaPublicidad, 'metricas_totales'>>(
+    `${SELECT_CAMPANA} WHERE cp.id = $1`,
     [id]
   )
+  const campana: CampanaPublicidad | null = campanaRow ? { ...campanaRow, metricas_totales: {} } : null
 
   return NextResponse.json({ campana })
 }

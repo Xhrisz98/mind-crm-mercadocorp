@@ -1,10 +1,18 @@
 'use client'
 import { Line, LineChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Skeleton } from '@/components/ui/SkeletonLoader'
-import type { CampanaMetricaPorFecha } from '@/lib/types'
+import { METRICA_COLOR_PALETTE } from '@/lib/utils'
+import type { SerieTemporalPunto, UnidadMetrica } from '@/lib/types'
+
+export interface MetricaSerie {
+  clave: string
+  nombre: string
+  unidad: UnidadMetrica
+}
 
 interface Props {
-  data: CampanaMetricaPorFecha[]
+  data: SerieTemporalPunto[]
+  series: MetricaSerie[]
   loading?: boolean
 }
 
@@ -35,28 +43,39 @@ function ChartTooltip({ active, payload, label }: {
   )
 }
 
-// Impresiones vive en un eje aparte (izquierda) de clics/conversiones
-// (derecha) porque su escala suele ser 10-100x mayor — en un solo eje, clics
-// y conversiones quedarían aplanados casi en cero.
-export default function MetricasTemporalesChart({ data, loading }: Props) {
+// Gráfica cualquier combinación de métricas del catálogo (selector en
+// PublicidadClient). El eje se asigna por `unidad`, no por nombre de métrica
+// fijo: la primera unidad que aparece entre las series seleccionadas va al
+// eje izquierdo, cualquier otra unidad distinta comparte el eje derecho —
+// así una métrica con escala muy distinta (ej. impresiones vs. gasto) no
+// aplasta a las demás en un solo eje.
+export default function MetricasTemporalesChart({ data, series, loading }: Props) {
   if (loading) return <Skeleton className="h-56 w-full" />
 
-  if (data.length === 0) {
+  if (data.length === 0 || series.length === 0) {
     return (
-      <div role="img" aria-label="Gráfico temporal de impresiones, clics y conversiones, sin datos" className="h-56 flex items-center justify-center">
+      <div role="img" aria-label="Gráfico temporal de métricas, sin datos" className="h-56 flex items-center justify-center">
         <p className="text-sm text-empty italic">Sin métricas registradas en este filtro</p>
       </div>
     )
   }
 
+  const chartData = data.map((punto) => ({
+    fecha: punto.fecha,
+    ...Object.fromEntries(series.map((s) => [s.clave, punto.valores[s.clave] ?? 0])),
+  }))
+
+  const unidadEjeIzquierdo = series[0].unidad
+  const tieneEjeDerecho = series.some((s) => s.unidad !== unidadEjeIzquierdo)
+
   return (
     <div
       role="img"
-      aria-label={`Gráfico de línea: impresiones, clics y conversiones por fecha, de ${formatFullDate(data[0].fecha)} a ${formatFullDate(data[data.length - 1].fecha)}`}
+      aria-label={`Gráfico de línea: ${series.map((s) => s.nombre).join(', ')} por fecha, de ${formatFullDate(data[0].fecha)} a ${formatFullDate(data[data.length - 1].fecha)}`}
       className="h-56 w-full text-gray-500 dark:text-gray-400"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid vertical={false} strokeOpacity={0.5} className="stroke-gray-100 dark:stroke-white/10" />
           <XAxis
             dataKey="fecha"
@@ -67,19 +86,30 @@ export default function MetricasTemporalesChart({ data, loading }: Props) {
             minTickGap={24}
           />
           <YAxis
-            yAxisId="impresiones"
+            yAxisId="izquierdo"
             tick={{ fill: 'currentColor', fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             width={40}
             tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
           />
-          <YAxis yAxisId="clics" orientation="right" tick={{ fill: 'currentColor', fontSize: 11 }} tickLine={false} axisLine={false} width={32} />
+          {tieneEjeDerecho && (
+            <YAxis yAxisId="derecho" orientation="right" tick={{ fill: 'currentColor', fontSize: 11 }} tickLine={false} axisLine={false} width={32} />
+          )}
           <Tooltip content={<ChartTooltip />} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Line yAxisId="impresiones" type="monotone" dataKey="impresiones" name="Impresiones" stroke="var(--chart-1)" strokeWidth={2} dot={false} />
-          <Line yAxisId="clics" type="monotone" dataKey="clics" name="Clics" stroke="var(--chart-3)" strokeWidth={2} dot={false} />
-          <Line yAxisId="clics" type="monotone" dataKey="conversiones" name="Conversiones" stroke="#22c55e" strokeWidth={2} dot={false} />
+          {series.map((s, i) => (
+            <Line
+              key={s.clave}
+              yAxisId={s.unidad === unidadEjeIzquierdo ? 'izquierdo' : 'derecho'}
+              type="monotone"
+              dataKey={s.clave}
+              name={s.nombre}
+              stroke={METRICA_COLOR_PALETTE[i % METRICA_COLOR_PALETTE.length]}
+              strokeWidth={2}
+              dot={false}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -1,4 +1,14 @@
-import { Pool } from 'pg'
+import { Pool, types } from 'pg'
+
+// El parser default de node-postgres convierte columnas DATE (oid 1082) a
+// objetos Date de JS en hora local, no a strings — pero todo el resto del
+// código (tipos en lib/types.ts, comparaciones, .slice(0,10) en el cliente)
+// asume 'YYYY-MM-DD' como string. Nunca fue un problema porque NextResponse
+// .json() serializa un Date a ISO string de todas formas, pero cualquier
+// lógica en JS del lado del servidor ANTES de esa serialización (ordenar,
+// usar como key de Map, etc.) se rompe con un objeto Date real. Se fuerza a
+// string acá, una sola vez, para que todo el proceso sea consistente.
+types.setTypeParser(1082, (val) => val)
 
 declare global {
   var _pgPool: Pool | undefined

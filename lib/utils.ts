@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana } from './types'
+import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, UnidadMetrica } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -69,11 +69,40 @@ export const OBJETIVO_CAMPANA_LABELS: Record<ObjetivoCampana, string> = {
 
 // Qué tarjetas de KPI se destacan en el detalle de una campaña según su
 // objetivo — taxonomía estándar Google/Meta Ads (awareness→CTR,
-// traffic→CPC, conversion→costo por conversión + ROI).
-export const OBJETIVO_KPI_DESTACADO: Record<ObjetivoCampana, ('ctr' | 'cpc' | 'cpa' | 'roi')[]> = {
+// traffic→CPC, conversion→costo por conversión + ROI). Referencia por
+// `clave` de fórmula (ver formulas_personalizadas.clave) en vez de un enum
+// fijo, ya que las fórmulas ahora son filas de datos. 'roi' no es una fórmula
+// real — es el sentinel que la UI usa para destacar la KpiCard de ROI, que
+// se calcula aparte (ver CampanaPublicidad.roi_estimado_pct).
+export const OBJETIVO_KPI_DESTACADO: Record<ObjetivoCampana, string[]> = {
   reconocimiento: ['ctr'],
   trafico: ['cpc'],
-  conversion: ['cpa', 'roi'],
+  conversion: ['costo_por_conversion', 'roi'],
+}
+
+// Paleta cíclica para series de métricas arbitrarias en gráficos (cuando hay
+// más series que colores fijos definidos en variables --chart-N).
+export const METRICA_COLOR_PALETTE = ['var(--chart-1)', 'var(--chart-3)', '#22c55e', '#f59e0b', '#a855f7', '#ec4899']
+
+// Formatea el valor tal como fue registrado para una métrica del catálogo
+// (tabla de histórico, chips de registro diario, ejes de gráficos). Para
+// unidad='porcentaje' asume que el usuario registró directamente el número
+// en escala 0-100 (ej. 45 → "45%"), a diferencia de formatValorFormula.
+export function formatValorMetrica(valor: number | null, unidad: UnidadMetrica): string {
+  if (valor == null) return '—'
+  if (unidad === 'usd') return formatCurrency(valor)
+  if (unidad === 'porcentaje') return `${valor.toLocaleString('es-EC', { maximumFractionDigits: 1 })}%`
+  return valor.toLocaleString('es-EC', { maximumFractionDigits: 2 })
+}
+
+// Formatea el resultado de una fórmula (KPI card). A diferencia de
+// formatValorMetrica, un ratio con unidad='porcentaje' viene en escala 0-1
+// (ej. clics/impresiones = 0.045) y necesita *100 para mostrarse como "4.5%".
+export function formatValorFormula(valor: number | null, unidad: UnidadMetrica): string {
+  if (valor == null) return '—'
+  if (unidad === 'usd') return formatCurrency(valor)
+  if (unidad === 'porcentaje') return `${(valor * 100).toFixed(1)}%`
+  return valor.toLocaleString('es-EC', { maximumFractionDigits: 2 })
 }
 
 // Ligado a compras_crm (descartada) — ver nota en lib/types.ts sobre MedioPago.

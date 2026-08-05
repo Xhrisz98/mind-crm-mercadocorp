@@ -176,6 +176,81 @@ export type EstadoCampanaPublicidad = 'activa' | 'pausada' | 'finalizada'
 // reconocimiento→CTR, trafico→CPC, conversion→costo por conversión + ROI.
 export type ObjetivoCampana = 'reconocimiento' | 'trafico' | 'conversion'
 
+export type UnidadMetrica = 'numero' | 'usd' | 'porcentaje'
+
+// Catálogo abierto de métricas (Bloque 5 extendido) — reemplaza las columnas
+// fijas impresiones/clics/conversiones/gasto de la campanas_metricas original.
+// Ver scripts/003_metricas_extensibles.sql.
+export interface MetricaDefinicion {
+  id: number
+  clave: string
+  nombre: string
+  unidad: UnidadMetrica
+  categoria: string | null
+  es_default: boolean
+  activo: boolean
+  creado_por: number | null
+  fecha_creacion: string
+  creado_por_nombre?: string | null
+  // Solo en GET /api/metricas-definiciones: si ya tiene valores registrados,
+  // no se puede eliminar (solo desactivar).
+  tiene_valores?: boolean
+}
+
+// Valor registrado para una campaña/métrica/fecha (fila de la tabla EAV).
+export interface CampanaMetricaValor {
+  id: number
+  campana_id: number
+  metrica_definicion_id: number
+  fecha: string
+  valor: number
+  registrado_por: number | null
+  fecha_registro: string
+  metrica_clave?: string
+  metrica_nombre?: string
+  metrica_unidad?: UnidadMetrica
+  registrado_por_nombre?: string | null
+}
+
+// {"operacion":"ratio","numerador":[metrica_id,...],"denominador":[metrica_id,...]}
+// numerador/denominador son listas porque el usuario puede sumar varias
+// métricas antes de dividir (ej. (compras+conversiones)/gasto).
+export interface FormulaOperacionRatio {
+  operacion: 'ratio'
+  numerador: number[]
+  denominador: number[]
+}
+
+export interface FormulaPersonalizada {
+  id: number
+  // Solo las fórmulas default (ctr/cpc/costo_por_conversion) tienen clave —
+  // permite referenciarlas desde código (ver OBJETIVO_KPI_DESTACADO) sin
+  // depender del nombre editable por el usuario.
+  clave: string | null
+  nombre: string
+  descripcion: string | null
+  unidad: UnidadMetrica
+  definicion: FormulaOperacionRatio
+  es_default: boolean
+  archivada: boolean
+  creado_por: number | null
+  es_compartida: boolean
+  fecha_creacion: string
+  creado_por_nombre?: string | null
+}
+
+// Fórmula ya evaluada para una campaña específica — la devuelve el detalle de
+// campaña (GET /api/campanas-publicidad/[id]), no se recalcula en el cliente.
+export interface FormulaValor {
+  id: number
+  clave: string | null
+  nombre: string
+  unidad: UnidadMetrica
+  es_default: boolean
+  // null = no calculable (denominador en 0, o sin datos suficientes)
+  valor: number | null
+}
+
 export interface CampanaPublicidad {
   id: number
   nombre: string
@@ -190,36 +265,22 @@ export interface CampanaPublicidad {
   fecha_creacion: string
   cliente_nombre?: string | null
   creado_por_nombre?: string | null
-  impresiones_total: number
-  clics_total: number
-  conversiones_total: number
-  gasto_total: number
-  // Solo presentes en el detalle (GET /api/campanas-publicidad/[id]). ROI es
-  // una estimación por rango de fechas + cliente vinculado (negocios ganados
-  // de ese contacto dentro del período de la campaña), no atribución exacta
-  // por campaña — ver comentario en la ruta.
+  // Totales acumulados por métrica del catálogo, clave = metricas_definiciones.clave.
+  // Reemplaza los antiguos impresiones_total/clics_total/conversiones_total/gasto_total.
+  metricas_totales: Record<string, number>
+  // Solo presentes en el detalle (GET /api/campanas-publicidad/[id]).
+  formulas?: FormulaValor[]
+  // ROI es un caso especial fuera del catálogo de fórmulas: depende de
+  // negocios ganados por rango de fechas + cliente vinculado, no de valores
+  // registrados en campanas_metricas_valores — no es atribución exacta por
+  // campaña ni es editable/archivable como las demás fórmulas.
   ingreso_estimado?: number | null
   roi_estimado_pct?: number | null
 }
 
-export interface CampanaMetricaDiaria {
-  id: number
-  campana_id: number
+export interface SerieTemporalPunto {
   fecha: string
-  impresiones: number
-  clics: number
-  conversiones: number
-  gasto: number
-  registrado_por: number | null
-  fecha_registro: string
-  registrado_por_nombre?: string | null
-}
-
-export interface CampanaMetricaPorFecha {
-  fecha: string
-  impresiones: number
-  clics: number
-  conversiones: number
+  valores: Record<string, number>
 }
 
 export type Periodo = 'hoy' | 'semana' | 'mes' | 'total'

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -10,17 +10,19 @@ import Spinner from '@/components/ui/Spinner'
 import Card from '@/components/ui/Card'
 import GastoPorCampanaBarChart from '@/components/charts/GastoPorCampanaBarChart'
 import MetricasTemporalesChart from '@/components/charts/MetricasTemporalesChart'
+import MetricasCatalogoModal from '@/components/campanas-publicidad/MetricasCatalogoModal'
+import FormulaBuilderModal from '@/components/campanas-publicidad/FormulaBuilderModal'
 import {
-  cn, formatCurrency, formatDate,
+  cn, formatDate, formatValorMetrica, formatValorFormula,
   PLATAFORMA_ADS_LABELS, ESTADO_CAMPANA_PUBLICIDAD_LABELS, ESTADO_CAMPANA_PUBLICIDAD_COLORS,
   OBJETIVO_CAMPANA_LABELS, OBJETIVO_KPI_DESTACADO,
 } from '@/lib/utils'
 import { fetcher } from '@/lib/fetcher'
 import type {
-  CampanaPublicidad, CampanaMetricaDiaria, CampanaMetricaPorFecha,
+  CampanaPublicidad, CampanaMetricaValor, SerieTemporalPunto, MetricaDefinicion,
   PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, Rol,
 } from '@/lib/types'
-import { Plus, Search, Pencil, Trash2, BarChart3, X, Info } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, BarChart3, X, Info, Settings2, SlidersHorizontal, Sigma } from 'lucide-react'
 
 interface Props {
   userRol: Rol
@@ -54,6 +56,13 @@ const EMPTY_FORM: FormState = {
 const ESTADO_OPTIONS: EstadoCampanaPublicidad[] = ['activa', 'pausada', 'finalizada']
 const PLATAFORMA_OPTIONS: PlataformaAds[] = ['google', 'meta']
 const OBJETIVO_OPTIONS: ObjetivoCampana[] = ['reconocimiento', 'trafico', 'conversion']
+const TEMPORAL_DEFAULT = ['impresiones', 'clics', 'conversiones']
+const MAX_SERIES_TEMPORAL = 4
+
+function useMetricasCatalogo() {
+  const { data, mutate } = useSWR<{ metricas: MetricaDefinicion[] }>('/api/metricas-definiciones', fetcher)
+  return { metricas: data?.metricas ?? [], mutateMetricas: mutate }
+}
 
 function CampanaModal({ form, setForm, isEdit, saving, onClose, onSave }: {
   form: FormState
@@ -126,6 +135,7 @@ function CampanaModal({ form, setForm, isEdit, saving, onClose, onSave }: {
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Cliente</label>
             <ContactoSearch
               value={form.cliente_nombre}
+              allowCreate
               onSelect={(c) => setForm((f) => ({ ...f, cliente_id: c?.id ?? null, cliente_nombre: c?.nombre ?? '' }))}
             />
           </div>
@@ -236,45 +246,72 @@ function KpiCard({ label, value, highlighted, footnote }: {
   )
 }
 
-function MetricasModal({ campana, onClose }: { campana: CampanaPublicidad; onClose: () => void }) {
-  const { data, mutate } = useSWR<{ campana: CampanaPublicidad; metricas: CampanaMetricaDiaria[] }>(
+interface FilaRegistro { id: string; metricaId: number | ''; valor: string }
+
+function nuevaFila(): FilaRegistro {
+  return { id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, metricaId: '', valor: '' }
+}
+
+function MetricasModal({ campana, metricasCatalogo, onClose }: {
+  campana: CampanaPublicidad
+  metricasCatalogo: MetricaDefinicion[]
+  onClose: () => void
+}) {
+  const { data, mutate } = useSWR<{ campana: CampanaPublicidad; metricas: CampanaMetricaValor[] }>(
     `/api/campanas-publicidad/${campana.id}`,
     fetcher
   )
   const metricas = data?.metricas ?? []
   const c = data?.campana ?? campana
+  const metricasActivas = metricasCatalogo.filter((m) => m.activo)
 
   const destacados = c.objetivo ? OBJETIVO_KPI_DESTACADO[c.objetivo] : []
-  const ctr = c.impresiones_total > 0 ? `${((c.clics_total / c.impresiones_total) * 100).toFixed(1)}%` : '—'
-  const cpc = c.clics_total > 0 ? formatCurrency(c.gasto_total / c.clics_total) : '—'
-  const cpa = c.conversiones_total > 0 ? formatCurrency(c.gasto_total / c.conversiones_total) : '—'
   const roi = c.roi_estimado_pct != null ? `${c.roi_estimado_pct > 0 ? '+' : ''}${c.roi_estimado_pct}%` : 'Sin cliente vinculado'
 
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
-  const [impresiones, setImpresiones] = useState('')
-  const [clics, setClics] = useState('')
-  const [conversiones, setConversiones] = useState('')
-  const [gasto, setGasto] = useState('')
+  const [filas, setFilas] = useState<FilaRegistro[]>([nuevaFila()])
   const [saving, setSaving] = useState(false)
 
+  const porFecha = useMemo(() => {
+    const map = new Map<string, CampanaMetricaValor[]>()
+    for (const m of data?.metricas ?? []) {
+      const arr = map.get(m.fecha) ?? []
+      arr.push(m)
+      map.set(m.fecha, arr)
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [data?.metricas])
+
+  function actualizarFila(id: string, cambios: Partial<FilaRegistro>) {
+    setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, ...cambios } : f)))
+  }
+
+  function agregarFila() {
+    setFilas((fs) => [...fs, nuevaFila()])
+  }
+
+  function quitarFila(id: string) {
+    setFilas((fs) => (fs.length > 1 ? fs.filter((f) => f.id !== id) : fs))
+  }
+
   async function handleAgregar() {
+    const valores = filas
+      .filter((f) => f.metricaId !== '' && f.valor.trim() !== '')
+      .map((f) => ({ metrica_definicion_id: Number(f.metricaId), valor: Number(f.valor) }))
+
+    if (valores.length === 0) { toast.error('Selecciona al menos una métrica con su valor'); return }
+
     setSaving(true)
     try {
       const res = await fetch(`/api/campanas-publicidad/${campana.id}/metricas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fecha,
-          impresiones: impresiones || 0,
-          clics: clics || 0,
-          conversiones: conversiones || 0,
-          gasto: gasto || 0,
-        }),
+        body: JSON.stringify({ fecha, valores }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) { toast.error(json.error || 'Error al registrar la métrica'); return }
-      toast.success('Métrica registrada')
-      setImpresiones(''); setClics(''); setConversiones(''); setGasto('')
+      if (!res.ok) { toast.error(json.error || 'Error al registrar las métricas'); return }
+      toast.success('Métricas registradas')
+      setFilas([nuevaFila()])
       await mutate()
     } catch { toast.error('Error de conexión') }
     finally { setSaving(false) }
@@ -308,9 +345,14 @@ function MetricasModal({ campana, onClose }: { campana: CampanaPublicidad; onClo
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
-          <KpiCard label="CTR" value={ctr} highlighted={destacados.includes('ctr')} />
-          <KpiCard label="CPC" value={cpc} highlighted={destacados.includes('cpc')} />
-          <KpiCard label="Costo por conversión" value={cpa} highlighted={destacados.includes('cpa')} />
+          {(c.formulas ?? []).map((f) => (
+            <KpiCard
+              key={f.id}
+              label={f.nombre}
+              value={formatValorFormula(f.valor, f.unidad)}
+              highlighted={f.clave != null && destacados.includes(f.clave)}
+            />
+          ))}
           <KpiCard
             label="ROI estimado"
             value={roi}
@@ -319,28 +361,54 @@ function MetricasModal({ campana, onClose }: { campana: CampanaPublicidad; onClo
           />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-5 p-3 bg-gray-50 dark:bg-white/5 rounded-lg">
-          <div>
-            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Fecha</label>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
+        <div className="mb-5 p-3 bg-gray-50 dark:bg-white/5 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-[11px] text-gray-500 dark:text-gray-400">Fecha</label>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
           </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Impresiones</label>
-            <input type="number" min="0" value={impresiones} onChange={(e) => setImpresiones(e.target.value)} placeholder="0" className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
+
+          <div className="space-y-2">
+            {filas.map((fila) => {
+              const opciones = metricasActivas.filter((m) => m.id === fila.metricaId || !filas.some((f) => f.id !== fila.id && f.metricaId === m.id))
+              return (
+                <div key={fila.id} className="flex items-center gap-2">
+                  <select
+                    value={fila.metricaId}
+                    onChange={(e) => actualizarFila(fila.id, { metricaId: e.target.value ? Number(e.target.value) : '' })}
+                    className="flex-1 text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Selecciona una métrica…</option>
+                    {opciones.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={fila.valor}
+                    onChange={(e) => actualizarFila(fila.id, { valor: e.target.value })}
+                    placeholder="Valor"
+                    className="w-28 text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => quitarFila(fila.id)}
+                    disabled={filas.length === 1}
+                    className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-30"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Clics</label>
-            <input type="number" min="0" value={clics} onChange={(e) => setClics(e.target.value)} placeholder="0" className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Conversiones</label>
-            <input type="number" min="0" value={conversiones} onChange={(e) => setConversiones(e.target.value)} placeholder="0" className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Gasto (USD)</label>
-            <input type="number" min="0" step="0.01" value={gasto} onChange={(e) => setGasto(e.target.value)} placeholder="0.00" className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100" />
-          </div>
-          <div className="col-span-2 sm:col-span-5 flex justify-end">
+
+          <div className="flex items-center justify-between mt-2">
+            <button
+              type="button"
+              onClick={agregarFila}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#1B2B8C] dark:text-[#4A9FD8] hover:underline"
+            >
+              <Plus size={12} /> Agregar métrica
+            </button>
             <button
               onClick={handleAgregar}
               disabled={saving}
@@ -352,32 +420,22 @@ function MetricasModal({ campana, onClose }: { campana: CampanaPublicidad; onClo
           </div>
         </div>
 
-        {metricas.length === 0 ? (
+        {porFecha.length === 0 ? (
           <p className="text-xs text-empty text-center py-8">Aún no hay métricas registradas para esta campaña</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[520px]">
-              <thead>
-                <tr className="border-b border-gray-50 dark:border-white/5">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fecha</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Impresiones</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Clics</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Conversiones</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Gasto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metricas.map((m) => (
-                  <tr key={m.id} className="border-b border-gray-50 dark:border-white/5 last:border-0">
-                    <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{formatDate(m.fecha)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{m.impresiones.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{m.clics.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{m.conversiones.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{formatCurrency(m.gasto)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {porFecha.map(([fechaGrupo, valores]) => (
+              <div key={fechaGrupo} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-gray-50/50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0 pt-0.5 w-20">{formatDate(fechaGrupo)}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {valores.map((v) => (
+                    <span key={v.id} className="text-xs px-2 py-0.5 rounded-full bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300">
+                      {v.metrica_nombre}: <span className="font-medium tabular-nums">{formatValorMetrica(v.valor, v.metrica_unidad ?? 'numero')}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </motion.div>
@@ -399,18 +457,38 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
   const [metricasCampana, setMetricasCampana] = useState<CampanaPublicidad | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CampanaPublicidad | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showCatalogo, setShowCatalogo] = useState(false)
+  const [showFormulas, setShowFormulas] = useState(false)
+
+  const { metricas: metricasCatalogo, mutateMetricas } = useMetricasCatalogo()
+  const [graficoGastoMetrica, setGraficoGastoMetrica] = useState('gasto')
+  const [graficoTemporalMetricas, setGraficoTemporalMetricas] = useState<string[]>(TEMPORAL_DEFAULT)
 
   const params = new URLSearchParams()
   if (q) params.set('q', q)
   if (estadoFiltro) params.set('estado', estadoFiltro)
   if (plataformaFiltro) params.set('plataforma', plataformaFiltro)
 
-  const { data, error, isLoading, mutate } = useSWR<{ campanas: CampanaPublicidad[]; serie_temporal: CampanaMetricaPorFecha[] }>(
+  const { data, error, isLoading, mutate } = useSWR<{ campanas: CampanaPublicidad[]; serie_temporal: SerieTemporalPunto[] }>(
     `/api/campanas-publicidad?${params}`,
     fetcher
   )
   const campanas = data?.campanas ?? []
   const serieTemporal = data?.serie_temporal ?? []
+
+  const metricaGastoInfo = metricasCatalogo.find((m) => m.clave === graficoGastoMetrica)
+  const seriesTemporales = graficoTemporalMetricas
+    .map((clave) => metricasCatalogo.find((m) => m.clave === clave))
+    .filter((m): m is MetricaDefinicion => !!m)
+    .map((m) => ({ clave: m.clave, nombre: m.nombre, unidad: m.unidad }))
+
+  function toggleSerieTemporal(clave: string) {
+    setGraficoTemporalMetricas((actuales) => {
+      if (actuales.includes(clave)) return actuales.filter((c) => c !== clave)
+      if (actuales.length >= MAX_SERIES_TEMPORAL) return actuales
+      return [...actuales, clave]
+    })
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM)
@@ -478,22 +556,67 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
 
   return (
     <div className="p-6 lg:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Campañas de Publicidad</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Registro manual de campañas en Google Ads y Meta Ads</p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Campañas de Publicidad</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Registro manual de campañas en Google Ads y Meta Ads</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCatalogo(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors"
+          >
+            <Settings2 size={14} /> Catálogo de métricas
+          </button>
+          <button
+            onClick={() => setShowFormulas(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors"
+          >
+            <Sigma size={14} /> Fórmulas personalizadas
+          </button>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         <Card className="p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Gasto por campaña</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Métrica por campaña</h3>
+            <select
+              value={graficoGastoMetrica}
+              onChange={(e) => setGraficoGastoMetrica(e.target.value)}
+              className="text-xs px-2 py-1 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
+            >
+              {metricasCatalogo.map((m) => <option key={m.clave} value={m.clave}>{m.nombre}</option>)}
+            </select>
+          </div>
           <GastoPorCampanaBarChart
-            data={campanas.map((c) => ({ nombre: c.nombre, gasto: c.gasto_total }))}
+            data={campanas.map((c) => ({ nombre: c.nombre, valor: c.metricas_totales[graficoGastoMetrica] ?? 0 }))}
+            unidad={metricaGastoInfo?.unidad ?? 'numero'}
             loading={isLoading}
           />
         </Card>
         <Card className="p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Impresiones, clics y conversiones</h3>
-          <MetricasTemporalesChart data={serieTemporal} loading={isLoading} />
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Métricas en el tiempo</h3>
+            <div className="flex items-center gap-1 flex-wrap">
+              <SlidersHorizontal size={12} className="text-gray-400" />
+              {metricasCatalogo.map((m) => (
+                <button
+                  key={m.clave}
+                  onClick={() => toggleSerieTemporal(m.clave)}
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full border transition-colors',
+                    graficoTemporalMetricas.includes(m.clave)
+                      ? 'bg-[#1B2B8C]/10 dark:bg-[#4A9FD8]/10 border-[#1B2B8C]/30 dark:border-[#4A9FD8]/30 text-[#1B2B8C] dark:text-[#4A9FD8]'
+                      : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400'
+                  )}
+                >
+                  {m.nombre}
+                </button>
+              ))}
+            </div>
+          </div>
+          <MetricasTemporalesChart data={serieTemporal} series={seriesTemporales} loading={isLoading} />
         </Card>
       </div>
 
@@ -558,7 +681,10 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
             </thead>
             <tbody>
               {campanas.map((c) => {
-                const ctr = c.impresiones_total > 0 ? ((c.clics_total / c.impresiones_total) * 100).toFixed(1) : '0.0'
+                const gasto = c.metricas_totales['gasto'] ?? 0
+                const clics = c.metricas_totales['clics'] ?? 0
+                const impresiones = c.metricas_totales['impresiones'] ?? 0
+                const ctr = impresiones > 0 ? ((clics / impresiones) * 100).toFixed(1) : '0.0'
                 return (
                   <tr key={c.id} className="border-b border-gray-50 dark:border-white/5 last:border-0 hover:bg-gray-50/70 dark:hover:bg-white/5 transition-colors">
                     <td className="px-4 py-3">
@@ -577,10 +703,10 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                      {formatCurrency(c.gasto_total)}{c.presupuesto != null && ` / ${formatCurrency(c.presupuesto)}`}
+                      {formatValorMetrica(gasto, 'usd')}{c.presupuesto != null && ` / ${formatValorMetrica(c.presupuesto, 'usd')}`}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                      {c.clics_total.toLocaleString()} · {ctr}%
+                      {clics.toLocaleString()} · {ctr}%
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -620,7 +746,19 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
 
       <AnimatePresence>
         {metricasCampana && (
-          <MetricasModal campana={metricasCampana} onClose={() => setMetricasCampana(null)} />
+          <MetricasModal campana={metricasCampana} metricasCatalogo={metricasCatalogo} onClose={() => setMetricasCampana(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCatalogo && (
+          <MetricasCatalogoModal onClose={() => setShowCatalogo(false)} onChanged={() => { mutateMetricas(); mutate() }} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFormulas && (
+          <FormulaBuilderModal onClose={() => setShowFormulas(false)} />
         )}
       </AnimatePresence>
 
