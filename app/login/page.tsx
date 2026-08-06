@@ -33,7 +33,7 @@ export default function LoginPage() {
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-3">Mind CRM</h1>
-          <p className="text-blue-200 text-lg mb-2">Bullpadel Ecuador</p>
+          <p className="text-blue-200 text-lg mb-2">Mercadocorp</p>
           <p className="text-blue-300 text-sm leading-relaxed">
             Gestión inteligente de leads captados por el agente Mind en WhatsApp, Telegram, Messenger e Instagram.
           </p>
