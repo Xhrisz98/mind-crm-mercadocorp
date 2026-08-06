@@ -86,7 +86,11 @@ CREATE TABLE IF NOT EXISTS public.formulas_personalizadas (
   descripcion TEXT,
   unidad VARCHAR(20) NOT NULL DEFAULT 'numero' CHECK (unidad IN ('numero', 'usd', 'porcentaje')),
   definicion JSONB NOT NULL,
-  -- formato: {"operacion":"ratio","numerador":[metrica_id,...],"denominador":[metrica_id,...]}
+  -- formato según operacion (catálogo extensible, ver lib/formulas.ts):
+  --   ratio:          {"operacion":"ratio","numerador":[metrica_id,...],"denominador":[metrica_id,...]}
+  --   suma:           {"operacion":"suma","metricas":[metrica_id,...]}
+  --   resta:          {"operacion":"resta","metricas":[metrica_id,...]}  (metricas[0] - resto)
+  --   multiplicacion: {"operacion":"multiplicacion","metricas":[metrica_id,...]}
   es_default BOOLEAN NOT NULL DEFAULT FALSE,
   archivada BOOLEAN NOT NULL DEFAULT FALSE,
   creado_por INTEGER REFERENCES public.usuarios_crm(id),

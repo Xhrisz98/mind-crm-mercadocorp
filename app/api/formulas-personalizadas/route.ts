@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query, queryOne } from '@/lib/db'
+import { queryOne, query } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
-import type { FormulaPersonalizada } from '@/lib/types'
+import { validarMetricaIds, operacionValida } from '@/lib/formulas'
+import type { FormulaPersonalizada, FormulaDefinicion } from '@/lib/types'
 
 const UNIDADES_VALIDAS = ['numero', 'usd', 'porcentaje']
 
 function checkAcceso(rol: string) {
   return rol === 'admin' || rol === 'comercial'
-}
-
-async function validarMetricaIds(ids: unknown): Promise<number[] | null> {
-  if (!Array.isArray(ids) || ids.length === 0) return null
-  const parsed = ids.map((v) => parseInt(v))
-  if (parsed.some((n) => Number.isNaN(n))) return null
-
-  const existentes = await query<{ id: number }>(
-    'SELECT id FROM public.metricas_definiciones WHERE id = ANY($1)',
-    [parsed]
-  )
-  if (existentes.length !== new Set(parsed).size) return null
-  return parsed
 }
 
 export async function GET(req: NextRequest) {
@@ -55,15 +43,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unidad inválida' }, { status: 400 })
   }
 
-  const numerador = await validarMetricaIds(body.numerador)
-  if (!numerador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el numerador' }, { status: 400 })
+  if (!operacionValida(body.operacion)) {
+    return NextResponse.json({ error: 'Operación inválida' }, { status: 400 })
+  }
 
-  const denominador = await validarMetricaIds(body.denominador)
-  if (!denominador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el denominador' }, { status: 400 })
+  let definicion: FormulaDefinicion
+  if (body.operacion === 'ratio') {
+    const numerador = await validarMetricaIds(body.numerador)
+    if (!numerador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el numerador' }, { status: 400 })
+    const denominador = await validarMetricaIds(body.denominador)
+    if (!denominador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el denominador' }, { status: 400 })
+    definicion = { operacion: 'ratio', numerador, denominador }
+  } else {
+    const metricas = await validarMetricaIds(body.metricas, 2)
+    if (!metricas) return NextResponse.json({ error: 'Selecciona al menos dos métricas válidas' }, { status: 400 })
+    definicion = { operacion: body.operacion, metricas }
+  }
 
   const descripcion = typeof body.descripcion === 'string' ? body.descripcion.trim() || null : null
-
-  const definicion = { operacion: 'ratio' as const, numerador, denominador }
 
   const nueva = await queryOne<{ id: number }>(
     `INSERT INTO public.formulas_personalizadas (nombre, descripcion, unidad, definicion, es_default, es_compartida, creado_por)

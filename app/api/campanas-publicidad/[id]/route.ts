@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
-import { evaluarFormulaRatio } from '@/lib/formulas'
+import { evaluarFormula } from '@/lib/formulas'
 import type { CampanaPublicidad, CampanaMetricaValor, FormulaPersonalizada, FormulaValor } from '@/lib/types'
 
 const SELECT_CAMPANA = `
@@ -70,7 +70,7 @@ export async function GET(
     nombre: f.nombre,
     unidad: f.unidad,
     es_default: f.es_default,
-    valor: evaluarFormulaRatio(f.definicion, valoresPorMetricaId),
+    valor: evaluarFormula(f.definicion, valoresPorMetricaId),
   }))
 
   // ROI estimado: negocios ganados del cliente vinculado a la campaña dentro

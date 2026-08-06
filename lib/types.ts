@@ -217,6 +217,12 @@ export interface CampanaMetricaValor {
   registrado_por_nombre?: string | null
 }
 
+// Catálogo de operaciones de una fórmula personalizada — extensible por
+// diseño. `definicion` es JSONB libre en la BD (sin CHECK de Postgres), así
+// que agregar una operación futura no toca el esquema: solo se suma una
+// interfaz aquí a la unión FormulaDefinicion y un nuevo case en el
+// evaluador (ver lib/formulas.ts, que documenta los 3 lugares a tocar).
+
 // {"operacion":"ratio","numerador":[metrica_id,...],"denominador":[metrica_id,...]}
 // numerador/denominador son listas porque el usuario puede sumar varias
 // métricas antes de dividir (ej. (compras+conversiones)/gasto).
@@ -225,6 +231,31 @@ export interface FormulaOperacionRatio {
   numerador: number[]
   denominador: number[]
 }
+
+// {"operacion":"suma","metricas":[metrica_id,...]}
+export interface FormulaOperacionSuma {
+  operacion: 'suma'
+  metricas: number[]
+}
+
+// {"operacion":"resta","metricas":[metrica_id,...]} — metricas[0] es la base;
+// el resultado es metricas[0] - suma(metricas[1..]).
+export interface FormulaOperacionResta {
+  operacion: 'resta'
+  metricas: number[]
+}
+
+// {"operacion":"multiplicacion","metricas":[metrica_id,...]}
+export interface FormulaOperacionMultiplicacion {
+  operacion: 'multiplicacion'
+  metricas: number[]
+}
+
+export type FormulaDefinicion =
+  | FormulaOperacionRatio
+  | FormulaOperacionSuma
+  | FormulaOperacionResta
+  | FormulaOperacionMultiplicacion
 
 export interface FormulaPersonalizada {
   id: number
@@ -235,7 +266,7 @@ export interface FormulaPersonalizada {
   nombre: string
   descripcion: string | null
   unidad: UnidadMetrica
-  definicion: FormulaOperacionRatio
+  definicion: FormulaDefinicion
   es_default: boolean
   archivada: boolean
   creado_por: number | null

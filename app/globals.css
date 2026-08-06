@@ -51,24 +51,36 @@
   }
 }
 
-/* Paleta de gráficos (Recharts) — variables CSS consumidas directamente en
-   atributos SVG (fill="var(--chart-1)") porque las clases dark: de Tailwind
-   no aplican a props de presentación SVG. Un solo ramp tonal de la marca
-   (navy → azul claro); en modo oscuro se aclara completo para mantenerse
-   visible sobre el fondo casi negro de las tarjetas (dark:bg-midnight-surface). */
+/* Paleta categórica de gráficos (Recharts) — variables CSS consumidas
+   directamente en atributos SVG (fill="var(--chart-1)") porque las clases
+   dark: de Tailwind no aplican a props de presentación SVG; así claro/oscuro
+   se resuelve gratis en el navegador. --chart-1 deriva del navy de marca
+   (#1B2B8C) manteniendo su hue pero ajustando la luminosidad al piso legible
+   en modo claro (OKLCH L≈0.43 — el hex de marca puro es demasiado oscuro
+   para leerse como identidad de serie, ver validate_palette.js del skill
+   dataviz); --chart-2..6 son hues distintos (no tintes del mismo azul) para
+   que las series se distingan por matiz, no solo por brillo. Validado con
+   el validador de paletas categóricas del skill dataviz: banda de
+   luminosidad, piso de croma, separación CVD (daltonismo) y contraste — ver
+   lib/theme.ts, única función que los componentes de gráfico deben
+   consultar (nunca un color escrito a mano). Un futuro cliente de esta
+   plantilla con otro color de marca solo necesita re-derivar estos 6 valores
+   (mismo procedimiento) y pegarlos aquí — ningún componente de gráfico cambia. */
 :root {
-  --chart-1: #1B2B8C;
-  --chart-2: #2E4DB8;
-  --chart-3: #4A9FD8;
-  --chart-4: #7FC1E8;
-  --chart-5: #B8DDF2;
+  --chart-1: #2d44a6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
 }
 html.dark {
-  --chart-1: #5B7FE0;
-  --chart-2: #6F93E8;
-  --chart-3: #6FB8EF;
-  --chart-4: #93D0F5;
-  --chart-5: #C7E8FB;
+  --chart-1: #4662c7;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
 }
 
 /* transitions.dev — shared motion tokens (durations/easings used across the app) */

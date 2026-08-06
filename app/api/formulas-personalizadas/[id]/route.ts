@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
-import type { FormulaPersonalizada } from '@/lib/types'
+import { validarMetricaIds } from '@/lib/formulas'
+import type { FormulaPersonalizada, FormulaDefinicion, FormulaOperacionRatio } from '@/lib/types'
 
 const UNIDADES_VALIDAS = ['numero', 'usd', 'porcentaje']
 
 function checkAcceso(rol: string) {
   return rol === 'admin' || rol === 'comercial'
-}
-
-async function validarMetricaIds(ids: unknown): Promise<number[] | null> {
-  if (!Array.isArray(ids) || ids.length === 0) return null
-  const parsed = ids.map((v) => parseInt(v))
-  if (parsed.some((n) => Number.isNaN(n))) return null
-
-  const existentes = await query<{ id: number }>(
-    'SELECT id FROM public.metricas_definiciones WHERE id = ANY($1)',
-    [parsed]
-  )
-  if (existentes.length !== new Set(parsed).size) return null
-  return parsed
 }
 
 export async function PATCH(
@@ -41,12 +29,19 @@ export async function PATCH(
 
   const body = await req.json().catch(() => ({}))
 
+  // El tipo de operación de una fórmula no se puede cambiar después de
+  // creada (crear una fórmula nueva es el camino para eso) — la UI nunca
+  // envía este campo en un PATCH, pero lo rechazamos igual por si acaso.
+  if ('operacion' in body) {
+    return NextResponse.json({ error: 'La operación de una fórmula no se puede modificar' }, { status: 400 })
+  }
+
   // Las fórmulas del sistema (CTR/CPC/costo por conversión) no se pueden
   // editar ni archivar: su `clave` es referenciada por código (ver
   // OBJETIVO_KPI_DESTACADO en lib/utils.ts) y siempre deben aparecer en el
   // dashboard de campaña. Solo se admite ajustar la descripción.
   if (existente.es_default) {
-    if ('nombre' in body || 'unidad' in body || 'numerador' in body || 'denominador' in body || 'archivada' in body) {
+    if ('nombre' in body || 'unidad' in body || 'numerador' in body || 'denominador' in body || 'metricas' in body || 'archivada' in body) {
       return NextResponse.json({ error: 'No se puede modificar una fórmula del sistema' }, { status: 400 })
     }
     const descripcion = typeof body.descripcion === 'string' ? body.descripcion.trim() || null : null
@@ -76,17 +71,28 @@ export async function PATCH(
       updates.push(`archivada = $${idx++}`)
       values.push(body.archivada)
     }
-    if ('numerador' in body || 'denominador' in body) {
-      const actual = await queryOne<{ definicion: { operacion: string; numerador: number[]; denominador: number[] } }>(
+    if ('numerador' in body || 'denominador' in body || 'metricas' in body) {
+      const actual = await queryOne<{ definicion: FormulaDefinicion }>(
         'SELECT definicion FROM public.formulas_personalizadas WHERE id = $1',
         [id]
       )
-      const numerador = 'numerador' in body ? await validarMetricaIds(body.numerador) : actual!.definicion.numerador
-      const denominador = 'denominador' in body ? await validarMetricaIds(body.denominador) : actual!.definicion.denominador
-      if (!numerador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el numerador' }, { status: 400 })
-      if (!denominador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el denominador' }, { status: 400 })
+      const definicionActual = actual!.definicion
+      let definicion: FormulaDefinicion
+
+      if (definicionActual.operacion === 'ratio') {
+        const numerador = 'numerador' in body ? await validarMetricaIds(body.numerador) : (definicionActual as FormulaOperacionRatio).numerador
+        const denominador = 'denominador' in body ? await validarMetricaIds(body.denominador) : (definicionActual as FormulaOperacionRatio).denominador
+        if (!numerador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el numerador' }, { status: 400 })
+        if (!denominador) return NextResponse.json({ error: 'Selecciona al menos una métrica válida para el denominador' }, { status: 400 })
+        definicion = { operacion: 'ratio', numerador, denominador }
+      } else {
+        const metricas = 'metricas' in body ? await validarMetricaIds(body.metricas, 2) : definicionActual.metricas
+        if (!metricas) return NextResponse.json({ error: 'Selecciona al menos dos métricas válidas' }, { status: 400 })
+        definicion = { operacion: definicionActual.operacion, metricas }
+      }
+
       updates.push(`definicion = $${idx++}`)
-      values.push(JSON.stringify({ operacion: 'ratio', numerador, denominador }))
+      values.push(JSON.stringify(definicion))
     }
 
     if (updates.length > 0) {

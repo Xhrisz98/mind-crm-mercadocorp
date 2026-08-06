@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { fetcher } from '@/lib/fetcher'
 import { cn } from '@/lib/utils'
-import type { FormulaPersonalizada, MetricaDefinicion, UnidadMetrica } from '@/lib/types'
+import type { FormulaPersonalizada, FormulaDefinicion, MetricaDefinicion, UnidadMetrica } from '@/lib/types'
 import Spinner from '@/components/ui/Spinner'
 import { Plus, X, Pencil, Archive, ArchiveRestore, Lock } from 'lucide-react'
 
@@ -14,16 +14,51 @@ interface Props {
   onChanged?: () => void
 }
 
+type Operacion = FormulaDefinicion['operacion']
+
 const UNIDAD_OPTIONS: { value: UnidadMetrica; label: string }[] = [
   { value: 'numero', label: 'Número' },
   { value: 'usd', label: 'USD' },
   { value: 'porcentaje', label: 'Porcentaje' },
 ]
 
-const FORM_VACIO = { nombre: '', descripcion: '', unidad: 'numero' as UnidadMetrica, numerador: [] as number[], denominador: [] as number[] }
+const OPERACION_OPTIONS: { value: Operacion; label: string }[] = [
+  { value: 'ratio', label: 'Razón (A / B)' },
+  { value: 'suma', label: 'Suma' },
+  { value: 'resta', label: 'Resta' },
+  { value: 'multiplicacion', label: 'Multiplicación' },
+]
 
-function nombresDeMetricas(ids: number[], metricas: MetricaDefinicion[]): string {
-  return ids.map((id) => metricas.find((m) => m.id === id)?.nombre ?? `#${id}`).join(' + ')
+const FORM_VACIO = {
+  operacion: 'ratio' as Operacion,
+  nombre: '',
+  descripcion: '',
+  unidad: 'numero' as UnidadMetrica,
+  numerador: [] as number[],
+  denominador: [] as number[],
+  metricas: [] as number[],
+  restaBase: null as number | null,
+  restaResto: [] as number[],
+}
+
+function nombresDeMetricas(ids: number[], metricas: MetricaDefinicion[], sep = ' + '): string {
+  return ids.map((id) => metricas.find((m) => m.id === id)?.nombre ?? `#${id}`).join(sep)
+}
+
+function resumenFormula(d: FormulaDefinicion, metricas: MetricaDefinicion[]): string {
+  switch (d.operacion) {
+    case 'ratio':
+      return `${nombresDeMetricas(d.numerador, metricas)} / ${nombresDeMetricas(d.denominador, metricas)}`
+    case 'suma':
+      return nombresDeMetricas(d.metricas, metricas, ' + ')
+    case 'multiplicacion':
+      return nombresDeMetricas(d.metricas, metricas, ' × ')
+    case 'resta': {
+      const [base, ...resto] = d.metricas
+      const nombreBase = nombresDeMetricas([base], metricas)
+      return resto.length > 0 ? `${nombreBase} - ${nombresDeMetricas(resto, metricas, ' - ')}` : nombreBase
+    }
+  }
 }
 
 export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
@@ -49,18 +84,28 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
   }
 
   function openEdit(f: FormulaPersonalizada) {
+    const d = f.definicion
     setForm({
+      ...FORM_VACIO,
+      operacion: d.operacion,
       nombre: f.nombre,
       descripcion: f.descripcion ?? '',
       unidad: f.unidad,
-      numerador: f.definicion.numerador,
-      denominador: f.definicion.denominador,
+      numerador: d.operacion === 'ratio' ? d.numerador : [],
+      denominador: d.operacion === 'ratio' ? d.denominador : [],
+      metricas: d.operacion === 'suma' || d.operacion === 'multiplicacion' ? d.metricas : [],
+      restaBase: d.operacion === 'resta' ? d.metricas[0] ?? null : null,
+      restaResto: d.operacion === 'resta' ? d.metricas.slice(1) : [],
     })
     setEditingId(f.id)
     setShowForm(true)
   }
 
-  function toggleMetrica(lista: 'numerador' | 'denominador', id: number) {
+  function cambiarOperacion(operacion: Operacion) {
+    setForm((f) => ({ ...FORM_VACIO, operacion, nombre: f.nombre, descripcion: f.descripcion, unidad: f.unidad }))
+  }
+
+  function toggleMetrica(lista: 'numerador' | 'denominador' | 'metricas', id: number) {
     setForm((f) => {
       const actual = f[lista]
       const nuevo = actual.includes(id) ? actual.filter((x) => x !== id) : [...actual, id]
@@ -68,21 +113,44 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
     })
   }
 
+  function elegirBaseResta(id: number) {
+    setForm((f) => ({ ...f, restaBase: id, restaResto: f.restaResto.filter((x) => x !== id) }))
+  }
+
+  function toggleRestaResto(id: number) {
+    setForm((f) => ({
+      ...f,
+      restaResto: f.restaResto.includes(id) ? f.restaResto.filter((x) => x !== id) : [...f.restaResto, id],
+    }))
+  }
+
   async function handleGuardar() {
     const nombre = form.nombre.trim()
     if (!nombre) { toast.error('El nombre es requerido'); return }
-    if (form.numerador.length === 0) { toast.error('Selecciona al menos una métrica para el numerador'); return }
-    if (form.denominador.length === 0) { toast.error('Selecciona al menos una métrica para el denominador'); return }
+
+    const payload: Record<string, unknown> = {
+      nombre,
+      descripcion: form.descripcion.trim() || null,
+      unidad: form.unidad,
+      operacion: form.operacion,
+    }
+
+    if (form.operacion === 'ratio') {
+      if (form.numerador.length === 0) { toast.error('Selecciona al menos una métrica para el numerador'); return }
+      if (form.denominador.length === 0) { toast.error('Selecciona al menos una métrica para el denominador'); return }
+      payload.numerador = form.numerador
+      payload.denominador = form.denominador
+    } else if (form.operacion === 'resta') {
+      if (form.restaBase == null) { toast.error('Selecciona la métrica base'); return }
+      if (form.restaResto.length === 0) { toast.error('Selecciona al menos una métrica para restar'); return }
+      payload.metricas = [form.restaBase, ...form.restaResto]
+    } else {
+      if (form.metricas.length < 2) { toast.error('Selecciona al menos dos métricas'); return }
+      payload.metricas = form.metricas
+    }
 
     setSaving(true)
     try {
-      const payload = {
-        nombre,
-        descripcion: form.descripcion.trim() || null,
-        unidad: form.unidad,
-        numerador: form.numerador,
-        denominador: form.denominador,
-      }
       const url = editingId ? `/api/formulas-personalizadas/${editingId}` : '/api/formulas-personalizadas'
       const method = editingId ? 'PATCH' : 'POST'
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -142,7 +210,7 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
                 <Lock size={11} className="text-gray-400" /> {f.nombre}
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                {nombresDeMetricas(f.definicion.numerador, metricas)} / {nombresDeMetricas(f.definicion.denominador, metricas)}
+                {resumenFormula(f.definicion, metricas)}
               </p>
             </div>
           ))}
@@ -178,7 +246,7 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
               <div className="min-w-0">
                 <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{f.nombre}</p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                  {nombresDeMetricas(f.definicion.numerador, metricas)} / {nombresDeMetricas(f.definicion.denominador, metricas)}
+                  {resumenFormula(f.definicion, metricas)}
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -217,6 +285,22 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
               className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B2B8C]/20 focus:border-[#1B2B8C] bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100"
             />
             <div>
+              <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Operación</label>
+              <select
+                value={form.operacion}
+                onChange={(e) => cambiarOperacion(e.target.value as Operacion)}
+                disabled={editingId !== null}
+                className="w-full text-sm px-2.5 py-2 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-gray-100 disabled:opacity-60"
+              >
+                {OPERACION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              {editingId !== null && (
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                  La operación no se puede cambiar al editar — crea una fórmula nueva si necesitas otra.
+                </p>
+              )}
+            </div>
+            <div>
               <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Unidad del resultado</label>
               <select
                 value={form.unidad}
@@ -226,6 +310,8 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
                 {UNIDAD_OPTIONS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
               </select>
             </div>
+
+            {form.operacion === 'ratio' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Numerador</label>
@@ -250,6 +336,49 @@ export default function FormulaBuilderModal({ onClose, onChanged }: Props) {
                 </div>
               </div>
             </div>
+            )}
+
+            {(form.operacion === 'suma' || form.operacion === 'multiplicacion') && (
+              <div>
+                <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Métricas</label>
+                <div className="space-y-1 max-h-32 overflow-y-auto border border-gray-200 dark:border-white/10 rounded-lg p-1.5 bg-white dark:bg-white/5">
+                  {metricas.map((m) => (
+                    <label key={m.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={form.metricas.includes(m.id)} onChange={() => toggleMetrica('metricas', m.id)} />
+                      {m.nombre}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.operacion === 'resta' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Métrica base</label>
+                  <div className="space-y-1 max-h-32 overflow-y-auto border border-gray-200 dark:border-white/10 rounded-lg p-1.5 bg-white dark:bg-white/5">
+                    {metricas.map((m) => (
+                      <label key={m.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input type="radio" name="resta-base" checked={form.restaBase === m.id} onChange={() => elegirBaseResta(m.id)} />
+                        {m.nombre}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Restar estas métricas</label>
+                  <div className="space-y-1 max-h-32 overflow-y-auto border border-gray-200 dark:border-white/10 rounded-lg p-1.5 bg-white dark:bg-white/5">
+                    {metricas.filter((m) => m.id !== form.restaBase).map((m) => (
+                      <label key={m.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked={form.restaResto.includes(m.id)} onChange={() => toggleRestaResto(m.id)} />
+                        {m.nombre}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setShowForm(false)}

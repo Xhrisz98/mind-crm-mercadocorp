@@ -8,8 +8,8 @@ import { TableSkeleton } from '@/components/ui/SkeletonLoader'
 import ErrorState from '@/components/ui/ErrorState'
 import Spinner from '@/components/ui/Spinner'
 import Card from '@/components/ui/Card'
-import GastoPorCampanaBarChart from '@/components/charts/GastoPorCampanaBarChart'
-import MetricasTemporalesChart from '@/components/charts/MetricasTemporalesChart'
+import ChartCard from '@/components/charts/ChartCard'
+import MetricCard from '@/components/charts/MetricCard'
 import MetricasCatalogoModal from '@/components/campanas-publicidad/MetricasCatalogoModal'
 import FormulaBuilderModal from '@/components/campanas-publicidad/FormulaBuilderModal'
 import {
@@ -22,7 +22,7 @@ import type {
   CampanaPublicidad, CampanaMetricaValor, SerieTemporalPunto, MetricaDefinicion,
   PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, Rol,
 } from '@/lib/types'
-import { Plus, Search, Pencil, Trash2, BarChart3, X, Info, Settings2, SlidersHorizontal, Sigma } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, BarChart3, X, Settings2, SlidersHorizontal, Sigma, Check } from 'lucide-react'
 
 interface Props {
   userRol: Rol
@@ -58,19 +58,30 @@ const PLATAFORMA_OPTIONS: PlataformaAds[] = ['google', 'meta']
 const OBJETIVO_OPTIONS: ObjetivoCampana[] = ['reconocimiento', 'trafico', 'conversion']
 const TEMPORAL_DEFAULT = ['impresiones', 'clics', 'conversiones']
 const MAX_SERIES_TEMPORAL = 4
+const MAX_CAMPANAS_GRAFICO = 12
+
+function formatTickDate(fecha: string): string {
+  return new Date(fecha).toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })
+}
+
+function formatFullDate(fecha: string): string {
+  return new Date(fecha).toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric' })
+}
 
 function useMetricasCatalogo() {
   const { data, mutate } = useSWR<{ metricas: MetricaDefinicion[] }>('/api/metricas-definiciones', fetcher)
   return { metricas: data?.metricas ?? [], mutateMetricas: mutate }
 }
 
-function CampanaModal({ form, setForm, isEdit, saving, onClose, onSave }: {
+function CampanaModal({ form, setForm, isEdit, saving, campanaExito, onClose, onSave, onRegistrarMetricas }: {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   isEdit: boolean
   saving: boolean
+  campanaExito: CampanaPublicidad | null
   onClose: () => void
   onSave: () => void
+  onRegistrarMetricas: () => void
 }) {
   return (
     <motion.div
@@ -87,6 +98,32 @@ function CampanaModal({ form, setForm, isEdit, saving, onClose, onSave }: {
         onClick={(e) => e.stopPropagation()}
         className="bg-white dark:bg-midnight-surface rounded-xl shadow-lg w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto"
       >
+        {campanaExito ? (
+          <div className="py-2 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-500/10">
+              <Check size={24} className="text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Campaña creada</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              &ldquo;{campanaExito.nombre}&rdquo; ya está lista. El siguiente paso es registrar sus primeras métricas.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+              >
+                Ahora no
+              </button>
+              <button
+                onClick={onRegistrarMetricas}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#1B2B8C] rounded-lg hover:bg-[#1B2B8C]/90 active:scale-[0.98] transition-all duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              >
+                <BarChart3 size={14} /> Registrar primeras métricas
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
           {isEdit ? 'Editar campaña de publicidad' : 'Nueva campaña de publicidad'}
         </h3>
@@ -212,37 +249,10 @@ function CampanaModal({ form, setForm, isEdit, saving, onClose, onSave }: {
             {isEdit ? 'Guardar cambios' : 'Crear campaña'}
           </button>
         </div>
+        </>
+        )}
       </motion.div>
     </motion.div>
-  )
-}
-
-function KpiCard({ label, value, highlighted, footnote }: {
-  label: string
-  value: string
-  highlighted: boolean
-  footnote?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'rounded-xl border p-3',
-        highlighted
-          ? 'border-[#1B2B8C]/30 dark:border-[#4A9FD8]/40 bg-[#1B2B8C]/5 dark:bg-[#4A9FD8]/10 ring-1 ring-[#1B2B8C]/20 dark:ring-[#4A9FD8]/30'
-          : 'border-gray-100 dark:border-white/10 bg-gray-50/50 dark:bg-white/[0.02]'
-      )}
-    >
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{label}</p>
-      <p className={cn('text-lg font-bold tabular-nums', highlighted ? 'text-[#1B2B8C] dark:text-[#4A9FD8]' : 'text-gray-900 dark:text-gray-100')}>
-        {value}
-      </p>
-      {footnote && (
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 flex items-start gap-1">
-          <Info size={10} className="shrink-0 mt-0.5" />
-          {footnote}
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -346,14 +356,14 @@ function MetricasModal({ campana, metricasCatalogo, onClose }: {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
           {(c.formulas ?? []).map((f) => (
-            <KpiCard
+            <MetricCard
               key={f.id}
               label={f.nombre}
               value={formatValorFormula(f.valor, f.unidad)}
               highlighted={f.clave != null && destacados.includes(f.clave)}
             />
           ))}
-          <KpiCard
+          <MetricCard
             label="ROI estimado"
             value={roi}
             highlighted={destacados.includes('roi')}
@@ -453,6 +463,7 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [campanaExito, setCampanaExito] = useState<CampanaPublicidad | null>(null)
 
   const [metricasCampana, setMetricasCampana] = useState<CampanaPublicidad | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CampanaPublicidad | null>(null)
@@ -482,6 +493,27 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
     .filter((m): m is MetricaDefinicion => !!m)
     .map((m) => ({ clave: m.clave, nombre: m.nombre, unidad: m.unidad }))
 
+  // Solo campañas con datos para la métrica elegida — una campaña en 0 no
+  // aporta nada visible a esta comparación y su banda vacía se lee como
+  // "el gráfico no llena el ancho" en vez de "sin datos" (ver discusión de
+  // layout). Ordenadas de mayor a menor, igual que el chart anterior.
+  const datosGastoOrdenados = campanas
+    .map((c) => ({ nombre: c.nombre, valor: c.metricas_totales[graficoGastoMetrica] ?? 0 }))
+    .filter((d) => d.valor > 0)
+    .sort((a, b) => b.valor - a.valor)
+  const campanasSinDatos = campanas.length - datosGastoOrdenados.length
+  const datosGastoVisibles = datosGastoOrdenados.slice(0, MAX_CAMPANAS_GRAFICO)
+  const campanasOcultasPorLimite = Math.max(0, datosGastoOrdenados.length - MAX_CAMPANAS_GRAFICO)
+  const notaGasto = [
+    campanasSinDatos > 0 ? `${campanasSinDatos} sin datos para esta métrica` : null,
+    campanasOcultasPorLimite > 0 ? `mostrando las ${MAX_CAMPANAS_GRAFICO} con mayor valor de ${datosGastoOrdenados.length}` : null,
+  ].filter(Boolean).join(' · ')
+
+  const datosTemporal = serieTemporal.map((punto) => ({
+    fecha: punto.fecha,
+    ...Object.fromEntries(seriesTemporales.map((s) => [s.clave, punto.valores[s.clave] ?? 0])),
+  }))
+
   function toggleSerieTemporal(clave: string) {
     setGraficoTemporalMetricas((actuales) => {
       if (actuales.includes(clave)) return actuales.filter((c) => c !== clave)
@@ -493,6 +525,7 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
   function openCreate() {
     setForm(EMPTY_FORM)
     setEditingId(null)
+    setCampanaExito(null)
     setShowModal(true)
   }
 
@@ -509,7 +542,19 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
       estado: c.estado,
     })
     setEditingId(c.id)
+    setCampanaExito(null)
     setShowModal(true)
+  }
+
+  function closeCampanaModal() {
+    setShowModal(false)
+    setCampanaExito(null)
+  }
+
+  function irARegistrarMetricas() {
+    if (campanaExito) setMetricasCampana(campanaExito)
+    setShowModal(false)
+    setCampanaExito(null)
   }
 
   async function handleSave() {
@@ -533,9 +578,14 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(json.error || 'Error al guardar la campaña'); return }
-      toast.success(editingId ? 'Campaña actualizada' : 'Campaña creada')
-      setShowModal(false)
       await mutate()
+      if (editingId) {
+        toast.success('Campaña actualizada')
+        setShowModal(false)
+      } else {
+        toast.success('Campaña creada')
+        setCampanaExito(json.campana)
+      }
     } catch { toast.error('Error de conexión') }
     finally { setSaving(false) }
   }
@@ -589,11 +639,17 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
               {metricasCatalogo.map((m) => <option key={m.clave} value={m.clave}>{m.nombre}</option>)}
             </select>
           </div>
-          <GastoPorCampanaBarChart
-            data={campanas.map((c) => ({ nombre: c.nombre, valor: c.metricas_totales[graficoGastoMetrica] ?? 0 }))}
-            unidad={metricaGastoInfo?.unidad ?? 'numero'}
+          <ChartCard
+            tipo="column"
+            data={datosGastoVisibles}
+            categoryKey="nombre"
+            series={[{ clave: 'valor', nombre: metricaGastoInfo?.nombre ?? 'Valor', unidad: metricaGastoInfo?.unidad ?? 'numero' }]}
             loading={isLoading}
+            ariaLabel={`Gráfico de barras: ${metricaGastoInfo?.nombre ?? 'métrica'} por campaña`}
           />
+          {notaGasto && (
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center mt-1">{notaGasto}</p>
+          )}
         </Card>
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -616,7 +672,17 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
               ))}
             </div>
           </div>
-          <MetricasTemporalesChart data={serieTemporal} series={seriesTemporales} loading={isLoading} />
+          <ChartCard
+            tipo="line"
+            data={datosTemporal}
+            categoryKey="fecha"
+            series={seriesTemporales}
+            loading={isLoading}
+            ariaLabel={`Gráfico de línea: ${seriesTemporales.map((s) => s.nombre).join(', ')} por fecha`}
+            emptyMessage="Sin métricas registradas en este filtro"
+            formatCategoria={formatTickDate}
+            formatCategoriaTooltip={formatFullDate}
+          />
         </Card>
       </div>
 
@@ -738,8 +804,10 @@ export default function PublicidadClient({ userRol, puedeEliminar }: Props) {
             setForm={setForm}
             isEdit={editingId !== null}
             saving={saving}
-            onClose={() => setShowModal(false)}
+            campanaExito={campanaExito}
+            onClose={closeCampanaModal}
             onSave={handleSave}
+            onRegistrarMetricas={irARegistrarMetricas}
           />
         )}
       </AnimatePresence>
