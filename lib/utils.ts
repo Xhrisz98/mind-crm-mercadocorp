@@ -1,9 +1,44 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, UnidadMetrica } from './types'
+import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, UnidadMetrica, EstadoProyecto, PrioridadTarea, VisibilidadCliente } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+// Proyectos (Bloque 6)
+export const ESTADO_PROYECTO_LABELS: Record<EstadoProyecto, string> = {
+  activo: 'Activo',
+  pausado: 'Pausado',
+  completado: 'Completado',
+  cancelado: 'Cancelado',
+}
+
+export const ESTADO_PROYECTO_COLORS: Record<EstadoProyecto, string> = {
+  activo: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20',
+  pausado: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20',
+  completado: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20',
+  cancelado: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
+}
+
+export const PRIORIDAD_TAREA_LABELS: Record<PrioridadTarea, string> = {
+  baja: 'Baja',
+  media: 'Media',
+  alta: 'Alta',
+  urgente: 'Urgente',
+}
+
+export const PRIORIDAD_TAREA_COLORS: Record<PrioridadTarea, string> = {
+  baja: 'bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400',
+  media: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  alta: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
+  urgente: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+}
+
+export const VISIBILIDAD_CLIENTE_LABELS: Record<VisibilidadCliente, string> = {
+  ninguna: 'Sin acceso al cliente',
+  resumen: 'Resumen (solo KPIs)',
+  completo: 'Completo (tablero de solo lectura)',
 }
 
 export const ESTADO_LABELS: Record<EstadoLead, string> = {

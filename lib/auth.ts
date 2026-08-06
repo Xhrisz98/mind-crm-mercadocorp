@@ -19,6 +19,7 @@ export async function signToken(user: UsuarioCRM): Promise<string> {
     nombre: user.nombre,
     rol: user.rol,
     puede_eliminar: user.puede_eliminar,
+    contacto_id: user.contacto_id,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

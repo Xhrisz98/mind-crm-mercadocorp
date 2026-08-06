@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await queryOne<UsuarioCRM & { password_hash: string }>(
-      'SELECT id, nombre, email, rol, activo, puede_eliminar, password_hash FROM usuarios_crm WHERE email = $1',
+      'SELECT id, nombre, email, rol, activo, puede_eliminar, contacto_id, password_hash FROM usuarios_crm WHERE email = $1',
       [email.toLowerCase().trim()]
     )
 

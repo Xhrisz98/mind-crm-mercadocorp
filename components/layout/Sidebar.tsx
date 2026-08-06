@@ -19,6 +19,7 @@ import {
   Rocket,
   Sun,
   Moon,
+  FolderKanban,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -55,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/leads', label: 'Leads', icon: Users },
   { href: '/negocios', label: 'Negocios', icon: Handshake },
+  { href: '/proyectos', label: 'Proyectos', icon: FolderKanban },
   { href: '/campanas', label: 'Campañas', icon: Megaphone, roles: ['admin', 'comercial'] },
   { href: '/campanas-publicidad', label: 'Publicidad', icon: Rocket, roles: ['admin', 'comercial'] },
   { href: '/configuracion', label: 'Configuración', icon: Settings },

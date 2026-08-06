@@ -33,6 +33,23 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
+  // Aislamiento de portal de cliente: 'cliente' no debe llegar a ninguna
+  // ruta ni endpoint del layout admin (Sidebar, /negocios, /leads,
+  // /configuracion, etc.), y ningún rol interno debe entrar a /portal.
+  // El matcher de este middleware cubre /api/** también, así que esto
+  // bloquea tanto páginas como llamadas API antes de llegar al handler.
+  const isPortalPath = pathname.startsWith('/portal') || pathname.startsWith('/api/portal')
+  const isApiPath = pathname.startsWith('/api/')
+
+  if (user.rol === 'cliente' && !isPortalPath) {
+    if (isApiPath) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 })
+    return NextResponse.redirect(new URL('/portal', request.url))
+  }
+  if (user.rol !== 'cliente' && isPortalPath) {
+    if (isApiPath) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 })
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
   return NextResponse.next()
 }
 

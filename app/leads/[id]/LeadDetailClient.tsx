@@ -26,6 +26,7 @@ const ROL_LABELS: Record<Rol, string> = {
   ventas: 'Ventas',
   comercial: 'Comercial',
   admin: 'Admin',
+  cliente: 'Cliente',
 }
 
 const CANAL_ORDER: Canal[] = ['whatsapp', 'telegram', 'messenger', 'instagram', 'web']

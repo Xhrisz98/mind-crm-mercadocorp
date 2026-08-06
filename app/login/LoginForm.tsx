@@ -61,7 +61,7 @@ export default function LoginForm({ onSubmittingChange }: LoginFormProps) {
       }
 
       toast.success(`Bienvenido, ${data.user.nombre}`)
-      router.push('/dashboard')
+      router.push(data.user.rol === 'cliente' ? '/portal' : '/dashboard')
       router.refresh()
     } catch {
       toast.error('Error de conexión. Intenta nuevamente.')

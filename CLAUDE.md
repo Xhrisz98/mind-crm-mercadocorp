@@ -42,6 +42,50 @@ rechazar la subida con 401/403.
 `POST /api/upload` (el flujo antiguo, servidor a servidor con JWT) se mantiene
 como fallback/deprecado pero ya no lo usa el frontend principal.
 
+## Proyectos (Bloque 6) — Gestor de tareas + Portal de cliente
+
+Extiende el sistema de roles existente, no es un sistema paralelo. `contacto_id`
+representa directamente "el cliente" para efectos de portal — no hay tabla
+`empresas`; si un cliente necesita varios logins, se crean varios
+`usuarios_crm` con `rol='cliente'` apuntando al mismo `contacto_id`.
+
+**Decisión de producto: rol='ventas' ve/edita TODOS los proyectos, sin filtro
+por vendedor_asignado_id** (a diferencia de Negocios/Leads, donde ventas solo
+ve lo suyo). La autorización fina vive a nivel de tarea individual vía
+`tareas.asignado_a`, no a nivel de portafolio de proyectos.
+
+Motivo: un proyecto es trabajo de entrega ejecutado por varias personas, no
+solo por quien cerró el negocio original — filtrar por vendedor le ocultaría
+el tablero a un compañero asignado a ejecutar tareas de un proyecto que otro
+cerró. Además, `proyectos`/`tareas` no exponen montos (lo sensible sigue
+protegido en `negocios`).
+
+**Si un futuro comprador de esta plantilla necesita aislamiento estricto por
+vendedor en Proyectos** (equipo de ventas grande, política distinta), la
+migración conocida es: unir `proyectos.cliente_id -> contactos.vendedor_asignado_id`
+(con fallback a `proyectos.negocio_id -> negocios.vendedor_asignado_id`) y
+replicar el filtro `WHERE vendedor_asignado_id = $user` que ya usa
+`app/api/negocios/route.ts` para `rol='ventas'`, aplicándolo a
+`app/api/proyectos/route.ts` y `app/api/proyectos/[id]/route.ts`. Este es un
+ajuste esperado, no una limitación descubierta tarde — ver también el
+comentario en `scripts/004_proyectos_portal_cliente.sql`.
+
+Adjuntos de tarea reutilizan el mismo flujo de subida a n8n del chat de leads
+(`/api/upload/token` + subida directa al webhook) sin tocar ese endpoint. El
+permiso para adjuntar imágenes a una tarea se valida en
+`POST /api/tareas/[id]/adjuntos` (admin/comercial siempre, ventas solo si es
+el `asignado_a` de esa tarea) — no en `/api/upload/token`, cuyo bloqueo a
+`rol='ventas'` no tiene una razón documentada (sin commit ni comentario que
+lo explique, y la UI de adjuntar en el chat de leads no lo refleja), así que
+no se tocó ese endpoint compartido para evitar romper una regla que podría
+ser intencional en otro contexto.
+
+Endpoints de portal (`/api/portal/proyectos`, `/api/portal/proyectos/[id]`)
+están separados de los endpoints internos (no el mismo con un `if`), validan
+`contacto_id` server-side siempre, y devuelven 404 (no 403 ni array vacío) al
+acceder a un proyecto de otro cliente — para no distinguir "no existe" de "no
+es tuyo" ante un ID adivinado.
+
 ## Deployment
 - Frontend: Vercel (mind-crm-msyu.vercel.app)
 - Backend n8n: n8n.mercadocorp.ec

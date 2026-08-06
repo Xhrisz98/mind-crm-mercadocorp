@@ -1,4 +1,4 @@
-export type Rol = 'ventas' | 'comercial' | 'admin'
+export type Rol = 'ventas' | 'comercial' | 'admin' | 'cliente'
 
 export type Canal = 'whatsapp' | 'telegram' | 'messenger' | 'instagram' | 'web' | 'presencial'
 
@@ -21,6 +21,11 @@ export interface UsuarioCRM {
   rol: Rol
   activo: boolean
   puede_eliminar: boolean
+  // Solo para rol='cliente' — qué contacto representa este login. NULL en roles internos.
+  contacto_id: number | null
+  // Solo presente en GET /api/usuarios (join con contactos) para mostrar a qué
+  // cliente representa un login rol='cliente'.
+  contacto_nombre?: string | null
 }
 
 export interface Contacto {
@@ -401,6 +406,83 @@ export interface JWTPayload {
   nombre: string
   rol: Rol
   puede_eliminar: boolean
+  // Solo para rol='cliente' — se valida server-side en cada endpoint de /api/portal,
+  // nunca se confía en el frontend para decidir qué proyecto puede ver el cliente.
+  contacto_id: number | null
   iat: number
   exp: number
+}
+
+// ============================================================================
+// Proyectos (Bloque 6) — Gestor de tareas tipo Jira + Portal de cliente
+// ============================================================================
+// DECISIÓN DE PRODUCTO: rol='ventas' ve/edita TODOS los proyectos, sin filtro
+// por vendedor_asignado_id (a diferencia de Negocios/Leads). La autorización
+// fina vive a nivel de tarea individual vía Tarea.asignado_a. Ver comentario
+// completo y la alternativa de aislamiento estricto en
+// scripts/004_proyectos_portal_cliente.sql y CLAUDE.md.
+export type EstadoProyecto = 'activo' | 'pausado' | 'completado' | 'cancelado'
+export type VisibilidadCliente = 'ninguna' | 'resumen' | 'completo'
+export type PrioridadTarea = 'baja' | 'media' | 'alta' | 'urgente'
+
+export interface Proyecto {
+  id: number
+  nombre: string
+  negocio_id: number | null
+  cliente_id: number | null
+  descripcion: string | null
+  fecha_inicio: string | null
+  fecha_fin_estimada: string | null
+  estado: EstadoProyecto
+  visibilidad_cliente: VisibilidadCliente
+  creado_por: number | null
+  fecha_creacion: string
+  cliente_nombre?: string | null
+  negocio_nombre?: string | null
+  creado_por_nombre?: string | null
+  tareas_total?: number
+  tareas_completadas?: number
+  tareas_vencidas?: number
+  proxima_fecha_limite?: string | null
+}
+
+// Personalizable por cliente vía datos, igual que pipeline_estados — el
+// código nunca debe comparar por `nombre`; usar es_estado_final para
+// identificar el estado terminal, y `orden` para las columnas del Kanban.
+export interface TareaEstado {
+  id: number
+  nombre: string
+  orden: number
+  color: string
+  es_estado_final: boolean
+}
+
+export interface Tarea {
+  id: number
+  proyecto_id: number
+  titulo: string
+  descripcion: string | null
+  tarea_estado_id: number
+  prioridad: PrioridadTarea
+  asignado_a: number | null
+  fecha_limite: string | null
+  visible_cliente: boolean
+  fecha_creacion: string
+  tarea_estado_nombre?: string
+  tarea_estado_color?: string
+  tarea_estado_orden?: number
+  es_estado_final?: boolean
+  asignado_a_nombre?: string | null
+  adjuntos?: TareaAdjunto[]
+}
+
+export interface TareaAdjunto {
+  id: number
+  tarea_id: number
+  url: string
+  nombre_archivo: string | null
+  tipo_mime: string | null
+  subido_por: number | null
+  fecha_creacion: string
+  subido_por_nombre?: string | null
 }
