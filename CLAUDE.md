@@ -87,7 +87,13 @@ acceder a un proyecto de otro cliente — para no distinguir "no existe" de "no
 es tuyo" ante un ID adivinado.
 
 ## Deployment
-- Frontend: Vercel (mind-crm-msyu.vercel.app)
+- Frontend: aún no confirmado que esta instancia (mind-crm-mercadocorp) esté
+  desplegada a Vercel — no asumir un dominio ni una conexión repo↔proyecto sin
+  verificarlo antes en el dashboard de Vercel (Settings → Git del proyecto).
+  El repo no tiene `.vercel/` ni `vercel.json`, así que no hay evidencia local
+  de vinculación. Una mención previa de "mind-crm-msyu.vercel.app" aquí mismo
+  resultó ser una afirmación sin verificar (ver historial de este archivo) —
+  no reintroducirla hasta confirmar en el dashboard real.
 - Backend n8n: n8n.mercadocorp.ec
 - VPS: 72.62.86.135 (Hostinger)
 
