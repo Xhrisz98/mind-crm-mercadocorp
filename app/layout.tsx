@@ -5,7 +5,7 @@ import ServiceWorkerRegister from '@/components/ui/ServiceWorkerRegister'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Mind CRM | Bullpadel Ecuador',
+  title: 'Mind CRM | Mercadocorp Ec',
   description: 'CRM interno para gestión de leads del agente Mind',
 }
 
