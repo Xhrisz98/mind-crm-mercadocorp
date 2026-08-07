@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/auth'
 import AppLayout from '@/components/layout/AppLayout'
 import DashboardClient from './DashboardClient'
-import type { Rol } from '@/lib/types'
 
 export default async function DashboardPage() {
   const user = await getSessionUser()
@@ -10,7 +9,7 @@ export default async function DashboardPage() {
 
   return (
     <AppLayout>
-      <DashboardClient userRol={user.rol as Rol} />
+      <DashboardClient />
     </AppLayout>
   )
 }

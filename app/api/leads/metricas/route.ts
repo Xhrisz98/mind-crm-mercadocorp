@@ -2,38 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
 import { ESTADO_FUNNEL_ORDEN } from '@/lib/utils'
+import { parsePeriodoParam, buildContactosWhere } from '@/lib/periodo'
 import type { LeadsMetricas, ConversionCanal } from '@/lib/types'
-
-const PERIODOS = ['hoy', 'semana', 'mes', 'total'] as const
-type Periodo = (typeof PERIODOS)[number]
-type PeriodoConUnidad = Exclude<Periodo, 'total'>
-
-const PERIOD_UNIT: Record<PeriodoConUnidad, string> = { hoy: 'day', semana: 'week', mes: 'month' }
 
 export async function GET(req: NextRequest) {
   const user = await getSessionUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const periodoParam = searchParams.get('periodo')
-  if (periodoParam !== null && !(PERIODOS as readonly string[]).includes(periodoParam)) {
-    return NextResponse.json({ error: 'Parámetro periodo inválido' }, { status: 400 })
-  }
-  const periodo: Periodo = (periodoParam as Periodo | null) ?? 'mes'
-  const esTotal = periodo === 'total'
-  const unit = esTotal ? null : PERIOD_UNIT[periodo as PeriodoConUnidad]
+  const periodo = parsePeriodoParam(searchParams)
+  if (typeof periodo === 'object') return NextResponse.json({ error: periodo.error }, { status: 400 })
 
   const esVentas = user.rol === 'ventas'
   const vendedorId = parseInt(user.sub)
 
-  const contactosParams: (string | number)[] = esVentas ? [vendedorId] : []
-  let contactosWhere = esVentas ? 'WHERE vendedor_asignado_id = $1' : ''
-  if (!esTotal) {
-    contactosParams.push(unit as string)
-    const cond = `fecha_primer_contacto >= date_trunc($${contactosParams.length}, CURRENT_DATE)`
-    contactosWhere = contactosWhere ? `${contactosWhere} AND ${cond}` : `WHERE ${cond}`
-  }
-  const contactosWhereAnd = contactosWhere ? `${contactosWhere} AND` : 'WHERE'
+  const { where: contactosWhere, whereAnd: contactosWhereAnd, params: contactosParams } = buildContactosWhere(
+    periodo,
+    esVentas,
+    vendedorId
+  )
 
   const [totalRow] = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM contactos ${contactosWhere}`,
@@ -85,7 +72,7 @@ export async function GET(req: NextRequest) {
   // así que el desglose sería siempre "100% él mismo").
   let leads_por_vendedor: { vendedor_nombre: string; count: number }[] = []
   if (!esVentas) {
-    const porVendedorWhere = contactosWhere.replace(/fecha_primer_contacto/g, 'c.fecha_primer_contacto')
+    const porVendedorWhere = buildContactosWhere(periodo, esVentas, vendedorId, 'c').where
     const vendedorRows = await query<{ vendedor_nombre: string; count: string }>(
       `SELECT COALESCE(u.nombre, 'Sin asignar') as vendedor_nombre, COUNT(*) as count
        FROM contactos c

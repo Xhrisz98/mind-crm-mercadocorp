@@ -1,224 +1,149 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getSessionUserFromRequest } from '@/lib/auth'
+import { parsePeriodoParam, fechaPeriodoCondicion, buildContactosWhere } from '@/lib/periodo'
+import type { JWTPayload, Periodo, NegociosKpis, LeadsDashboardKpis, CampanasKpis, ProyectosKpis } from '@/lib/types'
 
-const PERIODOS = ['hoy', 'semana', 'mes', 'total'] as const
-type Periodo = (typeof PERIODOS)[number]
-type PeriodoConUnidad = Exclude<Periodo, 'total'>
+// pipeline_valor/pipeline_ponderado: foto del pipeline abierto actual (negocios sin estado
+// terminal), sin filtro de período. tasa_cierre: histórica completa, ver nota en lib/types.ts.
+// ganados_periodo: usa fecha_actualizacion como proxy de fecha de cierre (negocios no tiene
+// columna fecha_cierre_real) — puede sobre-contar negocios editados en el período pero ganados
+// antes; el KPI correspondiente en la UI lo advierte con un tooltip.
+async function getNegociosKpis(user: JWTPayload, periodo: Periodo): Promise<NegociosKpis> {
+  const esVentas = user.rol === 'ventas'
+  const params: unknown[] = esVentas ? [parseInt(user.sub)] : []
+  const where = esVentas ? 'WHERE n.vendedor_asignado_id = $1' : ''
 
-// Unidad para date_trunc($1, CURRENT_DATE) — equivalente a CURRENT_DATE cuando unit='day'.
-const PERIOD_UNIT: Record<PeriodoConUnidad, string> = { hoy: 'day', semana: 'week', mes: 'month' }
-// Duración del período, para calcular el rango anterior de igual duración (comparativo).
-const PERIOD_INTERVAL: Record<PeriodoConUnidad, string> = { hoy: '1 day', semana: '7 days', mes: '1 month' }
+  const ganadosPeriodoCond = fechaPeriodoCondicion('n.fecha_actualizacion', periodo, params)
+  const filtroGanadosPeriodo = ganadosPeriodoCond ? `pe.es_estado_ganado AND ${ganadosPeriodoCond}` : 'pe.es_estado_ganado'
+
+  const [row] = await query<{
+    pipeline_valor: string
+    pipeline_ponderado: string
+    ganados_total: string
+    perdidos_total: string
+    ganados_periodo: string
+  }>(
+    `SELECT
+       COALESCE(SUM(n.monto) FILTER (WHERE NOT pe.es_estado_ganado AND NOT pe.es_estado_perdido), 0) as pipeline_valor,
+       COALESCE(SUM(n.monto * pe.probabilidad_cierre / 100.0) FILTER (WHERE NOT pe.es_estado_ganado AND NOT pe.es_estado_perdido), 0) as pipeline_ponderado,
+       COUNT(*) FILTER (WHERE pe.es_estado_ganado) as ganados_total,
+       COUNT(*) FILTER (WHERE pe.es_estado_perdido) as perdidos_total,
+       COUNT(*) FILTER (WHERE ${filtroGanadosPeriodo}) as ganados_periodo
+     FROM public.negocios n
+     JOIN public.pipeline_estados pe ON pe.id = n.pipeline_estado_id
+     ${where}`,
+    params
+  )
+
+  const ganadosTotal = parseInt(row?.ganados_total || '0')
+  const cerrados = ganadosTotal + parseInt(row?.perdidos_total || '0')
+
+  return {
+    pipeline_valor: parseFloat(row?.pipeline_valor || '0'),
+    pipeline_ponderado: parseFloat(row?.pipeline_ponderado || '0'),
+    ganados_periodo: parseInt(row?.ganados_periodo || '0'),
+    tasa_cierre: cerrados > 0 ? Math.round((ganadosTotal / cerrados) * 100) : 0,
+  }
+}
+
+// total_contactos es histórico completo (buildContactosWhere con periodo='total' fuerza el
+// filtro de fecha a null, dejando solo el filtro de rol). Los demás campos sí respetan el
+// período seleccionado. tasa_conversion_negocio mide contacto→negocio (existe una fila en
+// `negocios` con ese contacto_id), distinto del conversion_rate de /api/leads/metricas
+// (contacto→estado_lead='cliente').
+async function getLeadsKpis(user: JWTPayload, periodo: Periodo): Promise<LeadsDashboardKpis> {
+  const esVentas = user.rol === 'ventas'
+  const vendedorId = parseInt(user.sub)
+
+  const total = buildContactosWhere('total', esVentas, vendedorId, 'c')
+  const [totalRow] = await query<{ count: string }>(`SELECT COUNT(*) as count FROM contactos c ${total.where}`, total.params)
+
+  const enPeriodo = buildContactosWhere(periodo, esVentas, vendedorId, 'c')
+  const [periodoRow] = await query<{ total: string; con_negocio: string }>(
+    `SELECT COUNT(*) as total,
+            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM public.negocios n WHERE n.contacto_id = c.id)) as con_negocio
+     FROM contactos c
+     ${enPeriodo.where}`,
+    enPeriodo.params
+  )
+
+  const canalRows = await query<{ canal: string; count: string }>(
+    `SELECT c.canal as canal, COUNT(*) as count FROM contactos c ${enPeriodo.where} GROUP BY c.canal`,
+    enPeriodo.params
+  )
+
+  const nuevosPeriodo = parseInt(periodoRow?.total || '0')
+  const conNegocio = parseInt(periodoRow?.con_negocio || '0')
+
+  return {
+    total_contactos: parseInt(totalRow?.count || '0'),
+    nuevos_contactos_periodo: nuevosPeriodo,
+    tasa_conversion_negocio: nuevosPeriodo > 0 ? Math.round((conNegocio / nuevosPeriodo) * 100) : 0,
+    leads_por_canal: canalRows.reduce((acc, r) => ({ ...acc, [r.canal]: parseInt(r.count) }), {} as Record<string, number>),
+  }
+}
+
+// Solo campañas activas, filtradas también por período (campanas_metricas_valores.fecha) —
+// 'activa' (estado) y período (fecha) son dimensiones independientes. El caller solo invoca
+// esta función para admin/comercial (mismo acceso que /api/campanas-publicidad).
+async function getCampanasKpis(periodo: Periodo): Promise<CampanasKpis> {
+  const params: unknown[] = []
+  const fechaCond = fechaPeriodoCondicion('cmv.fecha', periodo, params)
+  const fechaWhere = fechaCond ? `AND ${fechaCond}` : ''
+
+  const [row] = await query<{ gasto: string | null; conversiones: string | null }>(
+    `SELECT
+       SUM(cmv.valor) FILTER (WHERE md.clave = 'gasto') as gasto,
+       SUM(cmv.valor) FILTER (WHERE md.clave = 'conversiones') as conversiones
+     FROM public.campanas_metricas_valores cmv
+     JOIN public.metricas_definiciones md ON md.id = cmv.metrica_definicion_id
+     JOIN public.campanas_publicidad cp ON cp.id = cmv.campana_id
+     WHERE cp.estado = 'activa' ${fechaWhere}`,
+    params
+  )
+
+  return {
+    gasto_total: Number(row?.gasto ?? 0),
+    conversiones_total: Math.round(Number(row?.conversiones ?? 0)),
+  }
+}
+
+// Foto del estado actual (sin filtro de período, igual que pipeline_valor de Negocios). Sin
+// filtro por vendedor_asignado_id — rol='ventas' ve todos los proyectos (ver CLAUDE.md).
+async function getProyectosKpis(): Promise<ProyectosKpis> {
+  const [row] = await query<{ activos: string; tareas_vencidas: string }>(
+    `SELECT
+       COUNT(DISTINCT p.id) FILTER (WHERE p.estado = 'activo') as activos,
+       COUNT(t.id) FILTER (WHERE t.fecha_limite < CURRENT_DATE AND NOT te.es_estado_final) as tareas_vencidas
+     FROM public.proyectos p
+     LEFT JOIN public.tareas t ON t.proyecto_id = p.id
+     LEFT JOIN public.tareas_estados te ON te.id = t.tarea_estado_id`
+  )
+
+  return {
+    proyectos_activos: parseInt(row?.activos || '0'),
+    tareas_vencidas: parseInt(row?.tareas_vencidas || '0'),
+  }
+}
 
 export async function GET(req: NextRequest) {
   const user = await getSessionUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const periodoParam = searchParams.get('periodo')
-  // Whitelist explícita: si viene un valor y no es exactamente uno de los 4 permitidos, se rechaza
-  // antes de tocar la base de datos (evita que un valor arbitrario llegue a construir la query).
-  if (periodoParam !== null && !(PERIODOS as readonly string[]).includes(periodoParam)) {
-    return NextResponse.json({ error: 'Parámetro periodo inválido' }, { status: 400 })
-  }
-  const periodo: Periodo = (periodoParam as Periodo | null) ?? 'mes'
-  // periodo='total' => sin filtro de fecha en ninguna query (histórico completo).
-  const esTotal = periodo === 'total'
-  const unit = esTotal ? null : PERIOD_UNIT[periodo as PeriodoConUnidad]
-  const interval = esTotal ? null : PERIOD_INTERVAL[periodo as PeriodoConUnidad]
+  const periodo = parsePeriodoParam(searchParams)
+  if (typeof periodo === 'object') return NextResponse.json({ error: periodo.error }, { status: 400 })
 
-  const esVentas = user.rol === 'ventas'
-  const vendedorId = parseInt(user.sub)
+  // Mismo acceso que /api/campanas-publicidad: rol='ventas' no ve campañas.
+  const puedeVerCampanas = user.rol === 'admin' || user.rol === 'comercial'
 
-  // Filtro de período para contactos — se omite por completo cuando periodo='total'.
-  const contactosParams: (string | number)[] = esVentas ? [vendedorId] : []
-  let contactosWhere = esVentas ? 'WHERE vendedor_asignado_id = $1' : ''
-  if (!esTotal) {
-    contactosParams.push(unit as string)
-    const cond = `fecha_primer_contacto >= date_trunc($${contactosParams.length}, CURRENT_DATE)`
-    contactosWhere = contactosWhere ? `${contactosWhere} AND ${cond}` : `WHERE ${cond}`
-  }
-  const contactosWhereAnd = contactosWhere ? `${contactosWhere} AND` : 'WHERE'
+  const [negocios, leads, campanas, proyectos] = await Promise.all([
+    getNegociosKpis(user, periodo),
+    getLeadsKpis(user, periodo),
+    puedeVerCampanas ? getCampanasKpis(periodo) : Promise.resolve(null),
+    getProyectosKpis(),
+  ])
 
-  const [totalRow] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM contactos ${contactosWhere}`,
-    contactosParams
-  )
-
-  // Período-independientes: siempre se calculan sobre hoy / últimos 7 días real, sin importar el filtro de período.
-  const [hoyRow] = await query<{ count: string }>(
-    esVentas
-      ? `SELECT COUNT(*) as count FROM contactos WHERE vendedor_asignado_id = $1 AND DATE(fecha_primer_contacto) = CURRENT_DATE`
-      : `SELECT COUNT(*) as count FROM contactos WHERE DATE(fecha_primer_contacto) = CURRENT_DATE`,
-    esVentas ? [vendedorId] : []
-  )
-
-  const [semanaRow] = await query<{ count: string }>(
-    esVentas
-      ? `SELECT COUNT(*) as count FROM contactos WHERE vendedor_asignado_id = $1 AND fecha_primer_contacto >= NOW() - INTERVAL '7 days'`
-      : `SELECT COUNT(*) as count FROM contactos WHERE fecha_primer_contacto >= NOW() - INTERVAL '7 days'`,
-    esVentas ? [vendedorId] : []
-  )
-
-  const estadoRows = await query<{ estado_lead: string; count: string }>(
-    `SELECT estado_lead, COUNT(*) as count FROM contactos ${contactosWhere} GROUP BY estado_lead`,
-    contactosParams
-  )
-
-  const canalRows = await query<{ canal: string; count: string }>(
-    `SELECT canal, COUNT(*) as count FROM contactos ${contactosWhere} GROUP BY canal`,
-    contactosParams
-  )
-
-  const [clientesRow] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM contactos ${contactosWhereAnd} estado_lead = 'cliente'`,
-    contactosParams
-  )
-
-  const total = parseInt(totalRow?.count || '0')
-  const clientes = parseInt(clientesRow?.count || '0')
-
-  const leads_por_estado = estadoRows.reduce(
-    (acc, r) => ({ ...acc, [r.estado_lead]: parseInt(r.count) }),
-    {} as Record<string, number>
-  )
-
-  const leads_por_canal = canalRows.reduce(
-    (acc, r) => ({ ...acc, [r.canal]: parseInt(r.count) }),
-    {} as Record<string, number>
-  )
-
-  const base = {
-    periodo,
-    total_leads: total,
-    leads_hoy: parseInt(hoyRow?.count || '0'),
-    leads_semana: parseInt(semanaRow?.count || '0'),
-    leads_por_estado,
-    leads_por_canal,
-    conversion_rate: total > 0 ? Math.round((clientes / total) * 100) : 0,
-  }
-
-  // Facturación — solo comercial/admin (compras_crm no es visible para ventas)
-  if (esVentas) {
-    return NextResponse.json({
-      ...base,
-      ventas_periodo: 0,
-      facturas_emitidas: 0,
-      ticket_promedio: 0,
-      por_cobrar: 0,
-      ventas_comparativo_pct: null,
-      ventas_por_dia: [],
-      distribucion_medio_pago: [],
-      top_productos: [],
-      facturacion_por_vendedor: [],
-    })
-  }
-
-  // Filtro de período para compras_crm — se omite por completo cuando periodo='total'.
-  const comprasParams: string[] = esTotal ? [] : [unit as string]
-  const comprasDateCond = esTotal ? '' : `fecha_compra >= date_trunc($1, CURRENT_DATE)`
-
-  const ventasWhere = comprasDateCond ? `WHERE estado = 'pagado' AND ${comprasDateCond}` : `WHERE estado = 'pagado'`
-  const facturasWhere = comprasDateCond ? `WHERE ${comprasDateCond}` : ''
-  const porCobrarWhere = comprasDateCond ? `WHERE estado = 'pendiente' AND ${comprasDateCond}` : `WHERE estado = 'pendiente'`
-  // Igual condición que ventasWhere, pero para la tabla con alias f (porVendedorRows).
-  const porVendedorWhere = comprasDateCond ? `WHERE f.${comprasDateCond}` : ''
-
-  const [ventasRow] = await query<{ total: string | null }>(
-    `SELECT SUM(precio) as total FROM public.compras_crm ${ventasWhere}`,
-    comprasParams
-  )
-
-  const [facturasRow] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM public.compras_crm ${facturasWhere}`,
-    comprasParams
-  )
-
-  const [ticketRow] = await query<{ promedio: string | null }>(
-    `SELECT AVG(precio) as promedio FROM public.compras_crm ${ventasWhere}`,
-    comprasParams
-  )
-
-  const [porCobrarRow] = await query<{ total: string | null }>(
-    `SELECT SUM(precio) as total FROM public.compras_crm ${porCobrarWhere}`,
-    comprasParams
-  )
-
-  const ventasPorDiaRows = await query<{ dia: string; total: string }>(
-    `SELECT DATE(fecha_compra) as dia, SUM(precio) as total FROM public.compras_crm
-     ${ventasWhere}
-     GROUP BY DATE(fecha_compra)
-     ORDER BY dia ASC`,
-    comprasParams
-  )
-
-  const medioPagoRows = await query<{ medio_pago: string | null; total: string }>(
-    `SELECT medio_pago, SUM(precio) as total FROM public.compras_crm
-     ${ventasWhere}
-     GROUP BY medio_pago`,
-    comprasParams
-  )
-
-  // Comparativo vs. rango anterior de igual duración: no aplica cuando periodo='total' (no hay "período anterior").
-  let ventasComparativoPct: number | null = null
-  if (!esTotal) {
-    const [ventasPrevRow] = await query<{ total: string | null }>(
-      `SELECT SUM(precio) as total FROM public.compras_crm
-       WHERE estado = 'pagado'
-         AND fecha_compra >= date_trunc($1, CURRENT_DATE) - $2::interval
-         AND fecha_compra < date_trunc($1, CURRENT_DATE)`,
-      [unit, interval]
-    )
-    const ventasPeriodo = parseFloat(ventasRow?.total || '0')
-    const ventasPrev = parseFloat(ventasPrevRow?.total || '0')
-    ventasComparativoPct = ventasPrev > 0 ? Math.round(((ventasPeriodo - ventasPrev) / ventasPrev) * 100) : null
-  }
-
-  const topProductosRows = await query<{ producto: string; cantidad: string; monto: string }>(
-    `SELECT producto, COUNT(*) as cantidad, SUM(precio) as monto FROM public.compras_crm
-     ${ventasWhere}
-     GROUP BY producto
-     ORDER BY monto DESC
-     LIMIT 5`,
-    comprasParams
-  )
-
-  // cantidad_facturas cuenta todas las facturas del período (cualquier estado, como
-  // facturas_emitidas); monto_total solo las pagadas (como ventas_periodo).
-  const porVendedorRows = await query<{ vendedor_nombre: string; cantidad_facturas: string; monto_total: string | null }>(
-    `SELECT COALESCE(u.nombre, 'Sin asignar') as vendedor_nombre,
-            COUNT(f.*) as cantidad_facturas,
-            SUM(f.precio) FILTER (WHERE f.estado = 'pagado') as monto_total
-     FROM public.compras_crm f
-     LEFT JOIN public.usuarios_crm u ON u.id = f.vendedor_id
-     ${porVendedorWhere}
-     GROUP BY COALESCE(u.nombre, 'Sin asignar')
-     ORDER BY monto_total DESC NULLS LAST`,
-    comprasParams
-  )
-
-  return NextResponse.json({
-    ...base,
-    ventas_periodo: parseFloat(ventasRow?.total || '0'),
-    facturas_emitidas: parseInt(facturasRow?.count || '0'),
-    ticket_promedio: parseFloat(ticketRow?.promedio || '0'),
-    por_cobrar: parseFloat(porCobrarRow?.total || '0'),
-    ventas_comparativo_pct: ventasComparativoPct,
-    ventas_por_dia: ventasPorDiaRows.map((r) => ({ fecha: r.dia, total: parseFloat(r.total) })),
-    distribucion_medio_pago: medioPagoRows.map((r) => ({
-      medio_pago: r.medio_pago,
-      total: parseFloat(r.total),
-    })),
-    top_productos: topProductosRows.map((r) => ({
-      producto: r.producto,
-      cantidad: parseInt(r.cantidad),
-      monto: parseFloat(r.monto),
-    })),
-    facturacion_por_vendedor: porVendedorRows.map((r) => ({
-      vendedor_nombre: r.vendedor_nombre,
-      cantidad_facturas: parseInt(r.cantidad_facturas),
-      monto_total: parseFloat(r.monto_total || '0'),
-    })),
-  })
+  return NextResponse.json({ periodo, negocios, leads, campanas, proyectos })
 }

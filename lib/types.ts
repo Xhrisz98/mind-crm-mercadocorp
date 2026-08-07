@@ -321,58 +321,56 @@ export interface SerieTemporalPunto {
 
 export type Periodo = 'hoy' | 'semana' | 'mes' | 'total'
 
-export interface VentaPorDia {
-  fecha: string
-  total: number
+// KPIs de Negocios para /dashboard (Bloque 7). pipeline_valor/pipeline_ponderado son una foto
+// del pipeline abierto actual (no filtran por período — no hay una noción natural de "pipeline
+// de esta semana"). tasa_cierre es histórica completa (ganados/(ganados+perdidos) de siempre),
+// no se filtra por período: con pocos cierres por semana el % sería ruidoso o indefinido.
+// ganados_periodo usa fecha_actualizacion como proxy de "cuándo se ganó" — negocios no tiene una
+// columna fecha_cierre_real, y fecha_actualizacion se actualiza en cualquier PATCH (no solo al
+// cambiar de etapa), así que puede sobre-contar negocios editados en el período pero ganados
+// antes. Ver tooltip junto al KPI en DashboardClient.tsx.
+export interface NegociosKpis {
+  pipeline_valor: number
+  pipeline_ponderado: number
+  ganados_periodo: number
+  tasa_cierre: number
 }
 
-// Ligado a compras_crm (descartada). Se mantiene solo para que /dashboard siga
-// compilando hasta que la sección de facturación se reemplace por las métricas
-// de negocios/campañas/proyectos del Bloque 7.
-// PENDIENTE Bloque 7: app/api/dashboard/route.ts consulta compras_crm en runtime
-// (SUM/COUNT/GROUP BY sobre esa tabla) para ventas_periodo, facturas_emitidas,
-// ticket_promedio, por_cobrar, ventas_por_dia, distribucion_medio_pago,
-// top_productos y facturacion_por_vendedor. Al eliminar compras_crm, esas
-// queries van a fallar y toda la sección de facturación de /dashboard
-// (incluye PaymentMethodDonutChart) queda rota hasta que Bloque 7 la
-// reconstruya sobre negocios/campañas/proyectos. Compila hoy; falla en runtime.
-export type MedioPago = 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'efectivo' | 'canje'
-
-export interface DistribucionMedioPago {
-  medio_pago: MedioPago | null
-  total: number
+// KPIs de Leads para /dashboard (Bloque 7) — distintos de LeadsMetricas (/api/leads/metricas):
+// total_contactos es histórico completo (universo total, sin filtro de período); los demás
+// campos sí respetan el período seleccionado. tasa_conversion_negocio mide contacto→negocio
+// (existe una fila en `negocios` con ese contacto_id), no contacto→estado_lead='cliente' como
+// el conversion_rate de /api/leads/metricas.
+export interface LeadsDashboardKpis {
+  total_contactos: number
+  nuevos_contactos_periodo: number
+  tasa_conversion_negocio: number
+  leads_por_canal: Record<string, number>
 }
 
-export interface TopProducto {
-  producto: string
-  cantidad: number
-  monto: number
+// KPIs de Campañas de publicidad para /dashboard (Bloque 7). null para rol='ventas' (mismo
+// acceso restringido que /api/campanas-publicidad, que ya bloquea ese rol). Filtra
+// cp.estado='activa' + período (campanas_metricas_valores.fecha) — ambos filtros son
+// independientes entre sí.
+export interface CampanasKpis {
+  gasto_total: number
+  conversiones_total: number
 }
 
-export interface FacturacionPorVendedor {
-  vendedor_nombre: string
-  cantidad_facturas: number
-  monto_total: number
+// KPIs de Proyectos para /dashboard (Bloque 7). Foto del estado actual (no se filtran por
+// período, igual que pipeline_valor de Negocios). Sin filtro por vendedor_asignado_id — mismo
+// criterio que /api/proyectos (rol='ventas' ve todos los proyectos, ver CLAUDE.md).
+export interface ProyectosKpis {
+  proyectos_activos: number
+  tareas_vencidas: number
 }
 
 export interface DashboardMetrics {
   periodo: Periodo
-  total_leads: number
-  leads_hoy: number
-  leads_semana: number
-  leads_por_estado: Record<EstadoLead, number>
-  leads_por_canal: Record<Canal, number>
-  conversion_rate: number
-  ventas_periodo: number
-  facturas_emitidas: number
-  ticket_promedio: number
-  por_cobrar: number
-  /** % vs. el período anterior de igual duración. null si el período anterior no tuvo ventas (división por cero), o si periodo='total'. */
-  ventas_comparativo_pct: number | null
-  ventas_por_dia: VentaPorDia[]
-  distribucion_medio_pago: DistribucionMedioPago[]
-  top_productos: TopProducto[]
-  facturacion_por_vendedor: FacturacionPorVendedor[]
+  negocios: NegociosKpis
+  leads: LeadsDashboardKpis
+  campanas: CampanasKpis | null
+  proyectos: ProyectosKpis
 }
 
 // Filtros de segmentación de contactos para email marketing. A diferencia

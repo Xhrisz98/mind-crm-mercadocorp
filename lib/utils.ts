@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { EstadoLead, LeadScore, MedioPago, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, UnidadMetrica, EstadoProyecto, PrioridadTarea, VisibilidadCliente } from './types'
+import type { EstadoLead, LeadScore, PlataformaAds, EstadoCampanaPublicidad, ObjetivoCampana, UnidadMetrica, EstadoProyecto, PrioridadTarea, VisibilidadCliente } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -138,15 +138,6 @@ export function formatValorFormula(valor: number | null, unidad: UnidadMetrica):
   if (unidad === 'usd') return formatCurrency(valor)
   if (unidad === 'porcentaje') return `${(valor * 100).toFixed(1)}%`
   return valor.toLocaleString('es-EC', { maximumFractionDigits: 2 })
-}
-
-// Ligado a compras_crm (descartada) — ver nota en lib/types.ts sobre MedioPago.
-export const MEDIO_PAGO_LABELS: Record<MedioPago, string> = {
-  tarjeta_debito: 'Tarjeta débito',
-  tarjeta_credito: 'Tarjeta crédito',
-  transferencia: 'Transferencia',
-  efectivo: 'Efectivo',
-  canje: 'Canje',
 }
 
 export function getLeadScoreColor(score: LeadScore): string {
